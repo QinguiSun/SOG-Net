@@ -24,7 +24,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
-          python -m pip install numpy scipy ase matscipy pytorch-finufft lightning pytest
+          python -m pip install numpy scipy ase matscipy pytorch-finufft lightning pytest dpdispatcher==1.1.0
       - name: Test data integrity, force gradients, restart and CLI workflow
         working-directory: CACE-SOG
         env:
@@ -38,3 +38,24 @@ jobs:
           bash -n examples/elementa/run_single_gpu.sh
           bash -n examples/elementa/train_a800.sbatch
           bash -n examples/elementa/index_cpu.sbatch
+  windows-preprocessing:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install CPU-only preprocessing and controller dependencies
+        run: python -m pip install numpy ase pytest dpdispatcher==1.1.0
+      - name: Verify native Windows indexing, portable binding and offline submission
+        working-directory: CACE-SOG
+        env:
+          PYTHONPATH: .
+        run: python -m pytest tests/test_elementa_data.py tests/test_elementa_baseline.py tests/test_elementa_transfer.py tests/test_elementa_dispatch.py tests/test_elementa_portable_cli.py -q
+      - name: Check Windows preprocessing script syntax
+        shell: pwsh
+        run: |
+          $parseErrors = $null
+          $tokens = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'CACE-SOG/examples/elementa/prepare_windows.ps1'), [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count) { $parseErrors | Write-Error; exit 1 }

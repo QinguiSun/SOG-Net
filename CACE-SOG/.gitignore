@@ -7,3 +7,9 @@ logs/
 *.sqlite3-journal
 *.sqlite3-wal
 *.sqlite3-shm
+*.local.json
+.dispatcher/
+dispatcher-work/
+dispatch-work/
+dispatch_work/
+bundles/
