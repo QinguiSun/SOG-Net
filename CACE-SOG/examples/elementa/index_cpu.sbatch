@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CPU-only index construction; supply --account and --time when submitting.
+# CPU-only index construction; supply the allowed --time when submitting.
 # Create CACE-SOG/logs before submission. No GPU is requested by this job.
 #SBATCH --job-name=elementa-index
 #SBATCH --partition=qdhcnormal

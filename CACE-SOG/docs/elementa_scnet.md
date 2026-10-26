@@ -104,17 +104,16 @@ python -m cace_sog_training environment --output runs/provenance/environment.jso
 
 建索引主要是 CPU/磁盘工作，不需要占用 A800。使用已分配的 CPU 计算任务，或下述 CPU sbatch 脚本；不要在登录节点上处理数百万帧。数据库与日志使用计算中心支持的工作文件系统，避免多任务同时写同一个索引。
 
-已确认 CPU 数据处理分区为 `qdhcnormal`，A800 分区为 `qdagnormal`，并需要 `--account`。请在当前终端将环境变量 `SCNET_ACCOUNT` 设置为您实际获准使用的计费 account；实际值不写入公开仓库。下面会在变量未设置时停止提交：
+已确认 CPU 数据处理分区为 `qdhcnormal`，A800 分区为 `qdagnormal`。按用户确认的当前配置，提交不需要指定 account，可直接使用下面的命令：
 
 ```bash
 cd /work/home/einlovestan/projects/SOG-Net/CACE-SOG
 conda activate "$HOME/envs/mlip"
 mkdir -p logs
-: "${SCNET_ACCOUNT:?请先 export SCNET_ACCOUNT 为实际可用的 account}"
-sbatch --partition=qdhcnormal --account="$SCNET_ACCOUNT" --time=1-00:00:00 examples/elementa/index_cpu.sbatch
+sbatch --partition=qdhcnormal --time=1-00:00:00 examples/elementa/index_cpu.sbatch
 ```
 
-索引作业中断后，可在保持该变量已设置的同一终端通过 `INDEX_RESUME=1 sbatch --partition=qdhcnormal --account="$SCNET_ACCOUNT" --time=1-00:00:00 examples/elementa/index_cpu.sbatch` 恢复。需要一并索引 Spin 时，增加 `WITH_SPIN=1`；包装器自动使用单独的 `elementa-with-spin.sqlite3`，也可通过 `DATABASE` 指定其他新索引。索引 Spin 不等于已经获准将它用于训练。
+索引作业中断后，可通过 `INDEX_RESUME=1 sbatch --partition=qdhcnormal --time=1-00:00:00 examples/elementa/index_cpu.sbatch` 恢复。需要一并索引 Spin 时，增加 `WITH_SPIN=1`；包装器自动使用单独的 `elementa-with-spin.sqlite3`，也可通过 `DATABASE` 指定其他新索引。索引 Spin 不等于已经获准将它用于训练。
 
 如果已经在获准的 CPU 计算任务内，等价的直接命令为：
 
@@ -202,27 +201,26 @@ CONVERGENCE_CHECKPOINT=runs/elementa-sog/best.pt CONVERGENCE_DIR=runs/elementa-t
 
 ## 6. 使用已确认的 sbatch 调度方式
 
-本项目给出单卡脚本 `examples/elementa/train_a800.sbatch`，使用已确认的 A800 分区 `qdagnormal`。先在项目目录创建日志目录，确认 `SCNET_ACCOUNT` 已设置为实际有权限的 account；时间限制按您实际允许的值调整：
+本项目给出单卡脚本 `examples/elementa/train_a800.sbatch`，使用已确认的 A800 分区 `qdagnormal`，提交无需指定 account。先在项目目录创建日志目录；时间限制按您实际允许的值调整：
 
 ```bash
 cd /work/home/einlovestan/projects/SOG-Net/CACE-SOG
 mkdir -p logs
-: "${SCNET_ACCOUNT:?请先 export SCNET_ACCOUNT 为实际可用的 account}"
-sbatch --partition=qdagnormal --account="$SCNET_ACCOUNT" --time=1-00:00:00 examples/elementa/train_a800.sbatch
+sbatch --partition=qdagnormal --time=1-00:00:00 examples/elementa/train_a800.sbatch
 ```
 
-实际 account 由用户终端环境提供，未硬编码在脚本中。脚本申请一张 GPU，不靠未经核实的 `gpu:a800` 资源名称猜测型号。保持 `SCNET_ACCOUNT` 已设置后，可通过相同脚本提交 smoke 或最终评估：
+脚本申请一张 GPU，不靠未经核实的 `gpu:a800` 资源名称猜测型号。可通过相同脚本提交 smoke 或最终评估：
 
 ```bash
-STAGE=smoke sbatch --partition=qdagnormal --account="$SCNET_ACCOUNT" --time=00:30:00 examples/elementa/train_a800.sbatch
-STAGE=evaluate sbatch --partition=qdagnormal --account="$SCNET_ACCOUNT" --time=04:00:00 examples/elementa/train_a800.sbatch
+STAGE=smoke sbatch --partition=qdagnormal --time=00:30:00 examples/elementa/train_a800.sbatch
+STAGE=evaluate sbatch --partition=qdagnormal --time=04:00:00 examples/elementa/train_a800.sbatch
 ```
 
 改变参数或恢复：
 
 ```bash
-N_DL=1 BATCH_SIZE=8 EPOCHS=50 sbatch --partition=qdagnormal --account="$SCNET_ACCOUNT" --time=1-00:00:00 examples/elementa/train_a800.sbatch
-N_DL=1 BATCH_SIZE=8 EPOCHS=50 RESUME=runs/elementa-sog/last.pt sbatch --partition=qdagnormal --account="$SCNET_ACCOUNT" --time=1-00:00:00 examples/elementa/train_a800.sbatch
+N_DL=1 BATCH_SIZE=8 EPOCHS=50 sbatch --partition=qdagnormal --time=1-00:00:00 examples/elementa/train_a800.sbatch
+N_DL=1 BATCH_SIZE=8 EPOCHS=50 RESUME=runs/elementa-sog/last.pt sbatch --partition=qdagnormal --time=1-00:00:00 examples/elementa/train_a800.sbatch
 ```
 
 时间值是提交语法示例，不能保证足够训练一轮或整个数据集。根据作业日志调整壁钟时间和 checkpoint 策略。使用计算中心实际提供的命令查看作业状态；收到作业号仅代表提交成功，不代表模型已训练完成。

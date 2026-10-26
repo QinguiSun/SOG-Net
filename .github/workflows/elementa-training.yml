@@ -7,6 +7,7 @@ on:
       - 'CACE-SOG/examples/elementa/**'
       - '.github/workflows/elementa-training.yml'
   push:
+    branches: [main]
     paths:
       - 'CACE-SOG/cace_sog_training/**'
       - 'CACE-SOG/tests/**'

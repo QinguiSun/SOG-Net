@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Supply the real --account and --time when submitting.
+# Supply the allowed --time when submitting; no account option is required.
 # Create CACE-SOG/logs before sbatch opens the output files.
 #SBATCH --job-name=elementa-sog
 #SBATCH --partition=qdagnormal
