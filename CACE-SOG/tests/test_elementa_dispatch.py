@@ -242,4 +242,4 @@ def test_remote_stage_command_and_existing_checkpoint(tmp_path, monkeypatch, sta
     assert calls[0][3] == stage
     assert calls[0][calls[0].index("--output") + 1] == str(Path(payload["remote_run_dir"]) / output_name)
     if stage == "evaluate":
-        assert calls[0][calls[0].index("--checkpoint") + 1].endswith("train/best.pt")
+        assert Path(calls[0][calls[0].index("--checkpoint") + 1]).parts[-2:] == ("train", "best.pt")
