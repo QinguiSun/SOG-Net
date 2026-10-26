@@ -112,7 +112,7 @@ python -m cace_sog_training environment --output runs/provenance/environment.jso
 
 建索引主要是 CPU/磁盘工作，不需要占用 A800。使用已分配的 CPU 计算任务，或下述 CPU sbatch 脚本；不要在登录节点上处理数百万帧。数据库与日志使用计算中心支持的工作文件系统，避免多任务同时写同一个索引。
 
-已确认 CPU 数据处理分区为 `qdhcnormal`，A800 分区为 `qdagnormal`。按用户确认的当前配置，提交不需要指定 account，可直接使用下面的命令：
+您提供的 CPU 数据处理分区为 `qdhcnormal`，A800 分区为 `qdagnormal`。下面的示例省略 `--account`，由 Slurm 使用提交环境或默认账户；省略该参数不代表已验证当前登录入口对该分区的授权。如果提交出现 account/partition 错误，先按第 9 节查询实际关联，再确定是否需要显式指定有效账户或更换资源入口。
 
 ```bash
 cd /work/home/einlovestan/projects/SOG-Net/CACE-SOG
@@ -209,7 +209,7 @@ CONVERGENCE_CHECKPOINT=runs/elementa-sog/best.pt CONVERGENCE_DIR=runs/elementa-t
 
 ## 6. 使用已确认的 sbatch 调度方式
 
-本项目给出单卡脚本 `examples/elementa/train_a800.sbatch`，使用已确认的 A800 分区 `qdagnormal`，提交无需指定 account。先在项目目录创建日志目录；时间限制按您实际允许的值调整：
+本项目给出单卡脚本 `examples/elementa/train_a800.sbatch`，默认使用您提供的 A800 分区 `qdagnormal`。示例省略 account，实际采用的账户及其分区权限以当前集群关联为准。先在项目目录创建日志目录；时间限制按您实际允许的值调整：
 
 ```bash
 cd /work/home/einlovestan/projects/SOG-Net/CACE-SOG
@@ -251,3 +251,24 @@ python -m cace_sog_training train --database /work/home/einlovestan/datasets/ELE
 本次适配已执行的小型 CPU 检查覆盖：完整 CLI 索引、实际参数更新的 smoke、调试中断、checkpoint 恢复、按 val 选择 best.pt、分通道 test，以及固定训练后 checkpoint 的网格比较。它验证入口与数据流程，不代表已经在 SCNet 上完成 ELEMENTA 全量训练。
 
 正式运行应检查：输入索引为 complete；已处理训练帧数等于所选 train 数量；训练/验证 loss 有限；最佳 checkpoint 和最近 checkpoint 实际存在；模型重载后可预测；test 分通道计数和误差报告完整。误差降低用于评价拟合能力；独立长程响应证据仍需相应物理测试。
+
+## 9. 提交时出现 Invalid account or account/partition combination
+
+这是 Slurm 接收作业时拒绝账户/分区关联，索引或模型程序尚未启动。无需因此重建索引、改模型或重装 Conda。
+
+即使命令没有显式指定 account，Slurm 仍会使用默认账户；SBATCH_ACCOUNT 等提交环境变量也可影响选择。账户关联由用户、集群、账户和分区共同决定，不能只凭这句错误认定必须增加 --account，也不能把分区可见当作提交授权。[Slurm 账户关联](https://slurm.schedmd.com/sacctmgr.html)、[提交参数与环境优先级](https://slurm.schedmd.com/sbatch.html)
+
+请在发生错误的同一个登录终端执行以下只读查询，保留完整输出或权限错误：
+
+```bash
+sinfo -o "%P %a %l"
+sacctmgr -P show user where name="$USER" format=User,DefaultAccount
+sacctmgr -P show assoc where user="$USER" format=Cluster,Account,Partition,QOS
+printenv SBATCH_ACCOUNT SBATCH_PARTITION SBATCH_QOS SBATCH_CLUSTERS SLURM_CLUSTERS
+```
+
+最后一条无输出表示这些变量未设置。部分中心限制普通用户查看 accounting 数据，此时保留错误，并使用 SCNet 的资源查询入口或技术支持核实该用户的 CPU/GPU 资源授权；不能据查询失败推断账户不存在。
+
+需要据实际输出区分：当前登录的集群是否提供目标分区；有效关联是否允许该账户使用目标分区；默认账户是否匹配；是否有遗留的 SBATCH 变量覆盖脚本。只有核实了有效组合后，才通过命令行覆盖 --partition 或显式指定 --account。脚本内不写死未知账户，不尝试修改集群的授权数据库。
+
+此前 GPU 作业能提交，也不自动证明相同登录入口或默认账户可使用 CPU 分区。若存在已成功作业，可提供其提交脚本中资源相关的 #SBATCH 行作为比对，不需要提供密码或密钥。
