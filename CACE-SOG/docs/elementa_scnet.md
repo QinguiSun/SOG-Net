@@ -110,6 +110,8 @@ python -m cace_sog_training environment --output runs/provenance/environment.jso
 
 ## 4. 索引与标签校验
 
+以下 CPU 提交模板要求当前登录资源入口实际提供并授权 `qdhcnormal`。若 `sinfo` 和账户关联只显示 `qdagnormal`，请使用第 10 节的入口选择说明；在 GPU 入口修改 account 参数并不能自动获得 CPU 分区权限。
+
 建索引主要是 CPU/磁盘工作，不需要占用 A800。使用已分配的 CPU 计算任务，或下述 CPU sbatch 脚本；不要在登录节点上处理数百万帧。数据库与日志使用计算中心支持的工作文件系统，避免多任务同时写同一个索引。
 
 您提供的 CPU 数据处理分区为 `qdhcnormal`，A800 分区为 `qdagnormal`。下面的示例省略 `--account`，由 Slurm 使用提交环境或默认账户；省略该参数不代表已验证当前登录入口对该分区的授权。如果提交出现 account/partition 错误，先按第 9 节查询实际关联，再确定是否需要显式指定有效账户或更换资源入口。
@@ -272,3 +274,27 @@ printenv SBATCH_ACCOUNT SBATCH_PARTITION SBATCH_QOS SBATCH_CLUSTERS SLURM_CLUSTE
 需要据实际输出区分：当前登录的集群是否提供目标分区；有效关联是否允许该账户使用目标分区；默认账户是否匹配；是否有遗留的 SBATCH 变量覆盖脚本。只有核实了有效组合后，才通过命令行覆盖 --partition 或显式指定 --account。脚本内不写死未知账户，不尝试修改集群的授权数据库。
 
 此前 GPU 作业能提交，也不自动证明相同登录入口或默认账户可使用 CPU 分区。若存在已成功作业，可提供其提交脚本中资源相关的 #SBATCH 行作为比对，不需要提供密码或密钥。
+
+## 10. 当前入口只有 qdagnormal 时怎样建立索引
+
+如果当前登录终端的 sinfo 只显示 qdagnormal，账户关联的 Cluster/Partition 也只列出 qdcs/qdagnormal，而 SBATCH 相关环境变量未设置，则 CPU 脚本请求的 qdhcnormal 不属于当前已确认可提交的关联。该情形不能通过猜 account 名解决；省略 account 时，现有默认账户已经有 GPU 分区关联。
+
+优先方案是在 SCNet 网页切换到已开通的 CPU 资源入口，再查询该入口的可用分区和关联，确认 qdhcnormal 可提交后使用 index_cpu.sbatch。若该 CPU 资源未开通，应向平台确认开通或资源入口，不能通过 sbatch 参数创建授权。
+
+CPU 和 GPU 资源入口不一定共享工作文件系统。CPU 建索引前，需确认训练使用的 export 在两边以相同绝对路径可见且文件身份保持一致。索引绑定实际路径、文件状态和哈希；如果数据存储不共享，不能只把 SQLite 文件复制回 GPU 环境继续使用，应在 GPU 训练实际可见的数据位置重新建索引。
+
+### 在当前 GPU 入口继续的备用方式
+
+如果希望先在当前已授权入口跑通，并接受占用一张 A800 作业资源，可直接复用现有 GPU 批处理脚本，将 STAGE 明确设为 index：
+
+```bash
+cd /work/home/einlovestan/projects/SOG-Net/CACE-SOG
+mkdir -p logs
+STAGE=index sbatch --export=ALL --partition=qdagnormal --job-name=elementa-index-gpu --time=1-00:00:00 examples/elementa/train_a800.sbatch
+```
+
+该命令只执行索引与标签校验，不启动模型训练。现有脚本仍申请一张 GPU 和四核 CPU，并执行 CUDA 可见性检查；索引本身主要消耗 CPU 与磁盘，所以此路径会占用 A800 资源及相应配额/计费。它是资源入口受限时的备用方案，不是 CPU 专用分区已经获授权的证明。
+
+--export=ALL 显式把 STAGE=index 传入作业，避免其他导出设置导致阶段参数丢失。日志仍保存在 logs/elementa-<作业号>.out 和 .err。该备用命令在最初适配提交中已经受支持，无需修改 Python 或重新安装环境。
+
+如果此前已有同一输入与参数的部分索引，再额外设置 INDEX_RESUME=1；单纯 sbatch 提交被拒绝不会启动索引，也不产生新的部分索引。索引完整结束后，继续原 smoke/converge/train/evaluate 阶段。时间限制仍需符合该分区规则。
