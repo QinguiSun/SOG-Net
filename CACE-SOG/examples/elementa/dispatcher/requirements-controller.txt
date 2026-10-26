@@ -1,0 +1,2 @@
+# Install only on the local controller, not into the verified GPU environment.
+dpdispatcher==1.1.0

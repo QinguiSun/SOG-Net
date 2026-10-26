@@ -1,0 +1,33 @@
+{
+  "stage": "bind",
+  "expected_git_commit": "REPLACE_WITH_REVIEWED_40_CHARACTER_COMMIT_SHA",
+  "local_work_dir": "dispatch-work",
+  "remote_project_dir": "/work/home/REPLACE_USER/projects/SOG-Net/CACE-SOG",
+  "remote_run_dir": "/work/home/REPLACE_USER/runs/elementa-sog-001",
+  "remote_database": "/work/home/REPLACE_USER/datasets/ELEMENTA_CACE_SOG/indices/elementa.sqlite3",
+  "remote_bundle": "/work/home/REPLACE_USER/datasets/ELEMENTA_CACE_SOG/bundle",
+  "remote_export_dir": "/work/home/REPLACE_USER/datasets/ELEMENTA_CACE_SOG/export",
+  "remote_conda_env": "/work/home/REPLACE_USER/envs/mlip",
+  "remote_conda_sh": null,
+  "channels": ["sog_candidates", "lattice_auxiliary", "pbe_lowdim_auxiliary"],
+  "options": {},
+  "resume_policy": "auto",
+  "download_checkpoints": false,
+  "machine": {
+    "remote_root": "/work/home/REPLACE_USER/dispatcher",
+    "remote_profile": {
+      "hostname": "REPLACE_SSH_HOST",
+      "port": 22,
+      "username": "REPLACE_USER",
+      "key_filename": "C:/Users/REPLACE_USER/.ssh/REPLACE_PRIVATE_KEY_FILENAME",
+      "look_for_keys": true,
+      "tar_compress": true
+    }
+  },
+  "resources": {
+    "cpus_per_task": 4,
+    "memory": "32G",
+    "time_limit": "1-00:00:00",
+    "check_interval": 60
+  }
+}

@@ -29,6 +29,22 @@ def database(tmp_path):
     return db
 
 
+def test_bound_index_trains_using_prepared_windows_baseline(database, tmp_path, monkeypatch):
+    from cace_sog_training.transfer import seal_index, bind_index
+    from cace_sog_training import baseline
+    bundle = tmp_path / "portable-bundle"
+    seal_index(database, bundle, progress=False)
+    bound = tmp_path / "scnet-bound.sqlite3"
+    bind_index(bundle, tmp_path / "export", bound, progress=False)
+    def no_remote_refit(*args, **kwargs):
+        raise AssertionError("the sealed channel scope must reuse its train-only fit")
+    monkeypatch.setattr(baseline, "fit_baseline", no_remote_refit)
+    args = arguments(tmp_path, bound)
+    assert runtime.run_train(args)["status"] == "complete"
+    saved = runtime.load_checkpoint(args.run_dir / "last.pt")
+    assert saved["baseline"]["frames"] == 15
+
+
 def test_sampler_is_constant_state_exact_permutation_with_restart():
     for size in (1, 8, 101, 1024):
         full = list(runtime.EpochSampler(size, 42, 3))

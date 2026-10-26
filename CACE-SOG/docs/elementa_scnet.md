@@ -2,6 +2,8 @@
 
 本入口在现有 CACE-SOG 模型上增加磁盘位置索引、按需构图、流式指标、可靠 checkpoint 和命令行训练。保留筛选阶段的通道与 `train/val/test`，不重新随机切分，不设置组成或轨迹帧数配额。
 
+**当前采用 Windows 本地预处理 → 一次上传 → SCNet A800 训练。** 团队已确认未购买 SCNet CPU 专用资源；请从 [Windows 与 SCNet 操作指南](elementa_windows_scnet.md) 开始，不再提交 `index_cpu.sbatch`。新命令 `seal` / `bind` 负责完整内容校验和跨系统路径重绑定，`dispatch` 负责准备或提交 GPU 作业。本文保留的 SCNet 建索引方式适用于另有 CPU 授权或接受占用 GPU 作业资源的环境。
+
 代码适配的起点为 `QinguiSun/SOG-Net` 的提交 `b249fc9bf1e92f5a0d4a1432acd26d7f4f0db89f`。训练报告应保存实际运行的适配提交和环境；用户已验证的 SCNet 环境为 `$HOME/envs/mlip`，Python 3.10.9。请继续使用该环境，下面不重新安装 CUDA 或重建 Conda 环境。
 
 ## 1. 文件怎样从 Windows 保存到 SCNet
@@ -20,7 +22,7 @@
 
 此前汇总中的原始导出帧约 56.49 GB；manifest、索引、模型、日志和文件系统缓存另计。传输前确认 SCNet 目标存储的实际可用空间与账户配额，不将原始帧字节数当作整个项目的空间上限。
 
-训练索引在 SCNet 上重新建立，不需要上传原 NAS 的两个大文件，也不需要 Windows 筛选阶段的 `index.sqlite3`。manifest 中原始 Windows/NAS 来源路径仅作追溯；读取训练帧使用 `export_path` 等相对路径。
+当前路线在 Windows 新建**训练索引**并封装快照，SCNet 校验后生成绑定本机路径的新索引，不重复解析数百万帧。不要上传原 NAS 两个大文件，也不要把筛选阶段的 `index.sqlite3` 当成训练索引。manifest 中原始 Windows/NAS 来源路径仅作追溯；读取训练帧使用 `export_path` 等相对路径。详见新指南。
 
 ### 取得真实连接信息
 
@@ -279,9 +281,9 @@ printenv SBATCH_ACCOUNT SBATCH_PARTITION SBATCH_QOS SBATCH_CLUSTERS SLURM_CLUSTE
 
 如果当前登录终端的 sinfo 只显示 qdagnormal，账户关联的 Cluster/Partition 也只列出 qdcs/qdagnormal，而 SBATCH 相关环境变量未设置，则 CPU 脚本请求的 qdhcnormal 不属于当前已确认可提交的关联。该情形不能通过猜 account 名解决；省略 account 时，现有默认账户已经有 GPU 分区关联。
 
-优先方案是在 SCNet 网页切换到已开通的 CPU 资源入口，再查询该入口的可用分区和关联，确认 qdhcnormal 可提交后使用 index_cpu.sbatch。若该 CPU 资源未开通，应向平台确认开通或资源入口，不能通过 sbatch 参数创建授权。
+本项目团队已确认没有购买 SCNet CPU 专用资源，目前应按新指南在 Windows 处理。只有以后另外获得 CPU 授权时，才查询相应入口的分区和关联，再考虑使用 `index_cpu.sbatch`；不能通过 sbatch 参数创建授权。
 
-CPU 和 GPU 资源入口不一定共享工作文件系统。CPU 建索引前，需确认训练使用的 export 在两边以相同绝对路径可见且文件身份保持一致。索引绑定实际路径、文件状态和哈希；如果数据存储不共享，不能只把 SQLite 文件复制回 GPU 环境继续使用，应在 GPU 训练实际可见的数据位置重新建索引。
+CPU 和 GPU 资源入口不一定共享工作文件系统。索引绑定实际路径、文件状态和哈希；如果数据存储不共享，不能只把 SQLite 文件复制回 GPU 环境继续使用。现在可用 `seal` 生成带完整哈希的快照，再在实际训练的数据位置用 `bind` 校验并生成新索引；也可重新建索引。
 
 ### 在当前 GPU 入口继续的备用方式
 

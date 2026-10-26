@@ -1,7 +1,13 @@
 # ELEMENTA large-scale CACE-SOG training
 
-See [the SCNet guide](docs/elementa_scnet.md) for Windows export transfer,
-integrity checks, the existing `$HOME/envs/mlip` environment, and Slurm commands.
+For the current GPU-only SCNet access, use [Windows preparation and DPDispatcher
+submission](docs/elementa_windows_scnet.md): prepare a complete disk index on
+Windows, seal it, upload the immutable data and bundle once, bind the new paths
+on SCNet, then dispatch GPU smoke/training/evaluation without re-uploading data.
+
+See [the direct SCNet guide](docs/elementa_scnet.md) for the existing
+`$HOME/envs/mlip` environment, direct commands, and the requirements for CPU
+partition access. A visible GPU partition does not grant access to a CPU queue.
 
 From this directory, use:
 
@@ -9,8 +15,11 @@ From this directory, use:
 python -m cace_sog_training --help
 ```
 
-The commands are `index`, `environment`, `smoke`, `converge`, `train`, and
-`evaluate`. Defaults select `sog_candidates`, `lattice_auxiliary`, and
+The commands include `index`, `seal`, `bind`, `dispatch`, `environment`, `smoke`,
+`converge`, `train`, and `evaluate`. Windows `index`/`seal` require only NumPy/ASE;
+model runtime dependencies remain on the GPU machine. `dispatch` defaults to an
+offline plan; `--submit` is required to connect and submit work. Defaults select
+`sog_candidates`, `lattice_auxiliary`, and
 `pbe_lowdim_auxiliary`, preserving existing `train/val/test` membership.
 Indexing and per-frame graph construction are disk-backed; epoch metrics and
 evaluation errors are accumulated in fixed-size counters. Every selected

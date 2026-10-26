@@ -1,5 +1,26 @@
 # Initial adapter validation
 
+## Windows preprocessing and portable deployment (adapter 0.2.0)
+
+Local CPU regression: **75 passed, 1 skipped, 27 subtests passed**. The skipped
+case executes the actual PowerShell preparation wrapper and is enabled on the
+Windows CI runner. The workflow now checks native Windows preprocessing as well
+as the complete Linux CPU model workflow; consult the actual Actions result.
+
+New checks cover complete-index SQLite snapshots, full-file SHA256 verification,
+CRLF/Unicode paths, Windows-source to target-path mapping, changed copy timestamps,
+transaction failure without index publication, source immutability, and preserved
+frame hashes/splits. A bound-index training test confirms that the sealed
+train-only baseline is reused without refitting on the GPU host. CPU-only CLI
+tests reject model-stack imports. DPDispatcher 1.1.0 objects are constructed in
+offline tests, including failure/recovery and restart guards, without SSH.
+
+No real SCNet connection, transfer, job submission or A800 training was executed
+for this update. Full-file hashing/copying still takes disk time and space;
+portable deployment does not make preprocessing instantaneous.
+
+## Original model adapter checks
+
 Base repository revision: `b249fc9bf1e92f5a0d4a1432acd26d7f4f0db89f`.
 
 Local validation used owned, tiny periodic fixtures, not the user's NAS or SCNet

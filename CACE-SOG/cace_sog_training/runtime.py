@@ -184,32 +184,13 @@ def loader_for(dataset, batch_size, workers=0, sampler=None, seed=0):
 
 
 def train_baseline(reader, channels, progress_seconds=30):
-    """Fit a per-element offset from train alone using fixed-size normal sums."""
-    gram = np.zeros((119, 119), dtype=np.float64)
-    rhs = np.zeros(119, dtype=np.float64)
-    elements = set()
-    frames, last = 0, time.monotonic()
-    for record in reader.iter_records(channels, "train"):
-        counts = json.loads(record["counts_json"])
-        zs = np.array([int(z) for z in counts], dtype=int)
-        if not len(zs) or np.any(zs < 1) or np.any(zs > 118):
-            raise ValueError("invalid atomic numbers in index")
-        values = np.array([counts[str(z)] for z in zs], dtype=np.float64) / record["natoms"]
-        gram[np.ix_(zs, zs)] += np.outer(values, values)
-        rhs[zs] += values * (record["energy"] / record["natoms"])
-        elements.update(int(z) for z in zs)
-        frames += 1
-        if time.monotonic() - last >= progress_seconds:
-            print(f"train-only energy baseline: {frames:,} frames", flush=True)
-            last = time.monotonic()
-    if not frames:
-        raise ValueError("selected train is empty")
-    zs = sorted(elements)
-    coefficients, _, rank, singular = np.linalg.lstsq(gram[np.ix_(zs, zs)], rhs[zs], rcond=1e-12)
-    e0 = {z: float(value) for z, value in zip(zs, coefficients)}
-    return e0, {"frames": frames, "elements": zs, "normal_matrix_rank": int(rank),
-                "normal_matrix_singular_values": singular.tolist(),
-                "method": "train-only per-atom weighted least squares; minimum-norm solution if rank deficient"}
+    """Reuse the sealed Windows fit, or stream train labels for a new scope."""
+    from .baseline import fit_baseline, prepared_baseline
+    prepared = prepared_baseline(reader, channels)
+    if prepared is not None:
+        print("Using sealed train-only energy baseline", flush=True)
+        return prepared
+    return fit_baseline(reader, channels, progress_seconds)
 
 
 class StreamingMetrics:

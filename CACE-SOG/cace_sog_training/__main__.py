@@ -5,8 +5,7 @@ import math
 from pathlib import Path
 import sys
 
-from . import __version__
-from .data import DEFAULT_CHANNELS
+from . import DEFAULT_CHANNELS, __version__
 
 
 def positive(value):
@@ -59,6 +58,16 @@ def main(argv=None):
     index.add_argument("--resume", action="store_true")
     index.add_argument("--commit-every", type=positive, default=1000)
     index.add_argument("--limit-records", type=positive, help="debug prefix only; leaves index partial and unusable for train")
+    seal = sub.add_parser("seal", help="snapshot a complete local index and hash its portable dataset inventory")
+    seal.add_argument("--database", required=True, type=Path)
+    seal.add_argument("--bundle", required=True, type=Path, help="new directory for the index snapshot and checksums; data are not copied")
+    bind = sub.add_parser("bind", help="verify uploaded bytes and create a new index bound to this machine")
+    bind.add_argument("--bundle", required=True, type=Path)
+    bind.add_argument("--export-dir", required=True, type=Path)
+    bind.add_argument("--database", required=True, type=Path, help="new destination database, created only after verification succeeds")
+    dispatch = sub.add_parser("dispatch", help="prepare an offline SCNet job plan, or explicitly submit using DPDispatcher")
+    dispatch.add_argument("--config", required=True, type=Path)
+    dispatch.add_argument("--submit", action="store_true", help="connect to SSH, upload the small task, submit and monitor it")
     train = sub.add_parser("train", help="train all selected train frames; choose best.pt using val")
     selection(train)
     model_options(train)
@@ -105,6 +114,15 @@ def main(argv=None):
             result = build_index(args.export_dir, args.database, channels=args.channels,
                                  resume=args.resume, commit_every=args.commit_every,
                                  limit_records=args.limit_records)
+        elif args.command == "seal":
+            from .transfer import seal_index
+            result = seal_index(args.database, args.bundle)
+        elif args.command == "bind":
+            from .transfer import bind_index
+            result = bind_index(args.bundle, args.export_dir, args.database)
+        elif args.command == "dispatch":
+            from .dispatch import dispatch as run_dispatch
+            result = run_dispatch(args.config, submit=args.submit)
         else:
             from . import runtime
             if args.command == "environment":

@@ -18,8 +18,9 @@ import time
 import numpy as np
 from ase.io import read as ase_read
 
+from . import DEFAULT_CHANNELS
+
 FORMAT_VERSION = 1
-DEFAULT_CHANNELS = ("sog_candidates", "lattice_auxiliary", "pbe_lowdim_auxiliary")
 CHANNELS = DEFAULT_CHANNELS + (
     "spin_review", "charge_review", "boundary_review", "electronic_review", "diagnostic_review"
 )
