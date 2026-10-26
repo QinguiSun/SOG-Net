@@ -1,0 +1,39 @@
+name: ELEMENTA training CPU checks
+on:
+  pull_request:
+    paths:
+      - 'CACE-SOG/cace_sog_training/**'
+      - 'CACE-SOG/tests/**'
+      - 'CACE-SOG/examples/elementa/**'
+      - '.github/workflows/elementa-training.yml'
+  push:
+    paths:
+      - 'CACE-SOG/cace_sog_training/**'
+      - 'CACE-SOG/tests/**'
+      - '.github/workflows/elementa-training.yml'
+jobs:
+  cpu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install isolated CPU test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy scipy ase matscipy pytorch-finufft lightning pytest
+      - name: Test data integrity, force gradients, restart and CLI workflow
+        working-directory: CACE-SOG
+        env:
+          PYTHONPATH: .
+          OMP_NUM_THREADS: '1'
+          MPLCONFIGDIR: /tmp/elementa-mpl
+        run: python -m pytest tests/test_elementa_*.py -q
+      - name: Check SCNet shell entry points
+        working-directory: CACE-SOG
+        run: |
+          bash -n examples/elementa/run_single_gpu.sh
+          bash -n examples/elementa/train_a800.sbatch
+          bash -n examples/elementa/index_cpu.sbatch
