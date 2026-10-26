@@ -19,6 +19,10 @@ Please refer to the ```setup.py``` file for installation instructions.
 ## Quick Start
 Example scripts can be found in ```\Deep-SOG\examples``` and each numerical example folder in ```\CACE-SOG```, which are based on the [DeepMD](https://github.com/deepmodeling/deepmd-kit) short-range descriptor and the [CACE](https://github.com/BingqingCheng/cace) descriptor, respectively.
 
+For disk-backed training on previously split ELEMENTA channel exports, see the
+[CACE-SOG ELEMENTA entry point](CACE-SOG/README_ELEMENTA.md) and
+[SCNet transfer and Slurm guide](CACE-SOG/docs/elementa_scnet.md).
+
 ## License
 This project is licensed under the MIT License.
 
@@ -43,3 +47,4 @@ This project is licensed under the MIT License.
 
 ## Contact
 For any queries regarding SOG-Net, please contact Yajie Ji (jiyajie595@sjtu.edu.cn) or Jiuyang Liang (jliang@flatironinstitute.org).
+
