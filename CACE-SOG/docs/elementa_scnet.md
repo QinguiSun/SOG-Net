@@ -67,13 +67,21 @@ sha256sum -c SHA256SUMS
 ```bash
 cd /work/home/einlovestan/projects/SOG-Net
 git fetch origin
-git switch --track -c codex/elementa-large-scale-training origin/codex/elementa-large-scale-training
+git checkout -b codex/elementa-large-scale-training --track origin/codex/elementa-large-scale-training
 cd /work/home/einlovestan/projects/SOG-Net/CACE-SOG
 conda activate "$HOME/envs/mlip"
 python -m cace_sog_training --help
 ```
 
-若本地已经存在同名分支，使用 `git switch codex/elementa-large-scale-training`。当前目录就是 Python 新入口所在目录；这些命令不需要更换原来的 PyTorch/CUDA 安装。若您习惯从其他目录启动，可先设置 `export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"`。不要为本入口直接运行旧版 `pip install -e .` 强制变更 ASE/PyTorch；已验证的环境应先保持原样，缺失依赖只针对实际错误处理。
+若本地已经存在同名分支，使用 `git checkout codex/elementa-large-scale-training`。当前目录就是 Python 新入口所在目录；这些命令不需要更换原来的 PyTorch/CUDA 安装。若您习惯从其他目录启动，可先设置 `export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"`。不要为本入口直接运行旧版 `pip install -e .` 强制变更 ASE/PyTorch；已验证的环境应先保持原样，缺失依赖只针对实际错误处理。
+
+部分 SCNet 节点的 Git 较旧，不提供 `git switch`；本文使用兼容的 `git checkout`。如果需要固定到已经测试的适配提交，也可在 fetch 后执行：
+
+```bash
+git checkout --detach 7bbe969ce15bcd440a32ff98a93e385449f5459e
+```
+
+这里显示 `detached HEAD` 是固定提交运行的正常状态，不影响训练。随后进入 CACE-SOG 目录继续执行原命令；需要返回主分支时使用 `git checkout main`。若 Git 报告本地修改会被覆盖，先保存自己的修改，再切换；不要为此使用强制 checkout 或 reset。
 
 记录环境与实际代码：
 
