@@ -15,7 +15,8 @@ def make_dataset(base):
     (dataset / "train" / "system" / "set.000").mkdir(parents=True)
     (dataset / "test" / "empty_dir").mkdir(parents=True)
     (dataset / "conversion_status.json").write_text('{"status":"complete"}', encoding="utf-8")
-    (dataset / "train" / "system" / "type.raw").write_text("0 1\n", encoding="utf-8")
+    # Fixed bytes make the same-size corruption assertion portable to Windows.
+    (dataset / "train" / "system" / "type.raw").write_bytes(b"0 1\n")
     (dataset / "train" / "system" / "set.000" / "coord.npy").write_bytes(b"immutable file bytes")
     (dataset / "数据.jsonl").write_text('{"id":1}\n', encoding="utf-8")
     return dataset
