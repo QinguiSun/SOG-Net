@@ -71,8 +71,16 @@ def run(tmp_path, paired_inputs, dpa_model=None, sog_model=None, condition=(0, 1
     dpa_model = dpa_model or FakeDeepPot("dpa")
     sog_model = sog_model or FakeDeepPot("sog")
     models = {dpa: dpa_model, sog: sog_model}
+    from dpa4c_sog.validate import validate
+    reports = {"dpa": tmp_path / "dpa-validation" / "validation.json",
+               "sog": tmp_path / "sog-validation" / "validation.json"}
+    for label, checkpoint in (("dpa", dpa), ("sog", sog)):
+        if not reports[label].exists():
+            validate(db, label, [checkpoint], reports[label].parent, (0, 1),
+                     loader=lambda unused: FakeDeepPot(label), progress_seconds=1000)
     path = tmp_path / "paired.jsonl"
-    result = predict(db, dpa, sog, path, condition, loader=lambda p: models[p], progress_seconds=1000)
+    result = predict(db, dpa, sog, path, condition, validation_reports=reports,
+                     loader=lambda p: models[p], progress_seconds=1000)
     return path, result, dpa_model, sog_model
 
 
@@ -93,6 +101,11 @@ def test_complete_pairwise_predictions_and_provenance(tmp_path, paired_inputs):
     assert status["condition_provenance"].startswith("explicit constant user assumption")
     assert len(status["index_identity"]) == 64
     assert status["checkpoints"]["dpa"]["sha256"] != status["checkpoints"]["sog"]["sha256"]
+    assert status["fine_tune_parent_not_verified"] is True
+    assert status["architecture_comparison"]["status"] == "partially_compared"
+    assert "descriptor.channels" in status["architecture_comparison"]["not_compared_fields"]
+    assert status["validation_provenance"]["dpa"]["frames"] == 1
+    assert status["validation_provenance"]["dpa"]["frame_identity_sha256"] == status["validation_provenance"]["sog"]["frame_identity_sha256"]
     with pytest.raises(ValueError, match="already exists"):
         run(tmp_path, paired_inputs)
 
@@ -127,6 +140,51 @@ def test_type_map_mismatch_and_unconditioned_backend_fail(tmp_path, paired_input
     with pytest.raises(ValueError, match="different elements"):
         run(tmp_path, paired_inputs, sog_model=model)
     assert not (tmp_path / "paired.jsonl").exists()
+
+
+class ConfiguredDeepPot(FakeDeepPot):
+    def __init__(self, kind, descriptor=None, neuron=None):
+        super().__init__(kind)
+        self.extra_descriptor = {"channels": 64, "lmax": 2, "radial_modes": 0, "rcut": 6.0}
+        self.extra_descriptor.update(descriptor or {})
+        self.neuron = [256, 256, 256] if neuron is None else neuron
+
+    def get_model_def_script(self):
+        result = super().get_model_def_script()
+        result["descriptor"].update(self.extra_descriptor)
+        result["fitting_net"] = {"neuron": self.neuron, "seed": 42 if self.kind == "dpa" else 91}
+        return result
+
+
+def test_reported_shared_architecture_is_recorded_without_seed_or_type_order_confusion(tmp_path, paired_inputs):
+    _, result, _, _ = run(tmp_path, paired_inputs, ConfiguredDeepPot("dpa"), ConfiguredDeepPot("sog"))
+    compared = result["architecture_comparison"]
+    assert compared["status"] == "matched_for_checked_fields"
+    assert compared["matched_fields"] == ["descriptor.channels", "descriptor.lmax", "descriptor.radial_modes", "descriptor.rcut", "fitting_net.neuron"]
+    assert result["models"]["dpa"]["fitting_net_metadata"]["seed"] != result["models"]["sog"]["fitting_net_metadata"]["seed"]
+    assert result["fine_tune_parent_not_verified"] is True
+
+
+@pytest.mark.parametrize("descriptor,neuron,field", [
+    ({"channels": 32}, None, "descriptor.channels"),
+    ({"lmax": 3}, None, "descriptor.lmax"),
+    ({"radial_modes": 2}, None, "descriptor.radial_modes"),
+    ({"rcut": 5.0}, None, "descriptor.rcut"),
+    ({}, [128, 128], "fitting_net.neuron"),
+])
+def test_known_architecture_mismatches_are_rejected(tmp_path, paired_inputs, descriptor, neuron, field):
+    baseline = ConfiguredDeepPot("dpa")
+    sog = ConfiguredDeepPot("sog", descriptor, neuron)
+    with pytest.raises(ValueError, match=field.replace(".", r"\.")):
+        run(tmp_path, paired_inputs, baseline, sog)
+    assert not (tmp_path / "paired.jsonl").exists()
+
+
+def test_missing_architecture_fields_are_recorded_as_not_compared(tmp_path, paired_inputs):
+    _, result, _, _ = run(tmp_path, paired_inputs, ConfiguredDeepPot("dpa"), FakeDeepPot("sog"))
+    assert result["architecture_comparison"]["status"] == "partially_compared"
+    assert result["architecture_comparison"]["matched_fields"] == []
+    assert len(result["architecture_comparison"]["not_compared_fields"]) == 5
 
 
 def test_same_checkpoint_and_bad_explicit_condition_rejected(tmp_path, paired_inputs):
@@ -168,3 +226,38 @@ def test_rejects_source_condition_conflicts(tmp_path, paired_inputs, monkeypatch
     with pytest.raises(ValueError, match="conflicts"):
         run(tmp_path, paired_inputs)
     assert not (tmp_path / "paired.jsonl").exists()
+
+
+def test_test_prediction_requires_both_completed_validation_reports(tmp_path, paired_inputs):
+    db, dpa, sog = paired_inputs
+    with pytest.raises(ValueError, match="validation reports are required"):
+        predict(db, dpa, sog, tmp_path / "unvalidated.jsonl", (0, 1), loader=lambda _: None)
+    assert not (tmp_path / "unvalidated.jsonl").exists()
+
+
+@pytest.mark.parametrize("defect", ["status", "kind", "split", "condition", "index", "frames", "frame_hash", "checkpoint", "candidate_hash", "selection"])
+def test_mismatched_validation_evidence_never_publishes_test_predictions(tmp_path, paired_inputs, defect):
+    from dpa4c_sog.validate import validate
+    db, dpa, sog = paired_inputs
+    paths = {label: tmp_path / (label + "-val") / "validation.json" for label in ("dpa", "sog")}
+    for label, checkpoint in (("dpa", dpa), ("sog", sog)):
+        validate(db, label, [checkpoint], paths[label].parent, (0, 1),
+                 loader=lambda unused, name=label: FakeDeepPot(name), progress_seconds=1000)
+    report = json.loads(paths["sog"].read_text())
+    if defect == "status": report["status"] = "partial"
+    if defect == "kind": report["kind"] = "dpa"
+    if defect == "split": report["split"] = "test"
+    if defect == "condition": report["condition"] = [0, 3]
+    if defect == "index": report["index_identity"] = "0" * 64
+    if defect == "frames": report["frames_per_checkpoint"] += 1
+    if defect == "frame_hash": report["frame_identity_sha256"] = "0" * 64
+    if defect == "checkpoint": report["selected_checkpoint_sha256"] = "0" * 64
+    if defect == "candidate_hash": report["candidates"][0]["checkpoint_sha256"] = "0" * 64
+    if defect == "selection": report["selected_index"] = 5
+    paths["sog"].write_text(json.dumps(report))
+    models = {dpa: FakeDeepPot("dpa"), sog: FakeDeepPot("sog")}
+    output = tmp_path / "bad-validation.jsonl"
+    with pytest.raises(ValueError):
+        predict(db, dpa, sog, output, (0, 1), validation_reports=paths, loader=models.get, progress_seconds=1000)
+    assert not output.exists()
+    assert json.loads(output.with_name(output.name + ".status.json").read_text())["status"] == "failed"

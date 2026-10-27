@@ -87,9 +87,18 @@ export DPA_RUN="$DPA_ROOT/runs/baseline_smoke"
 sbatch --export=ALL examples/dpa4c/baseline_a800.sbatch
 ```
 
-如果非交互作业找不到 Conda，先将 `DPA_CONDA_SH` 设为该机器 `conda info --base` 下的 `etc/profile.d/conda.sh`。作业目录必须是新目录；中断后需按实际 DeepMD checkpoint 和官方 `--restart` 语义恢复，不能对已有目录盲目再次启动。该模板尚未在 SCNet 上执行。
+如果非交互作业找不到 Conda，先将 `DPA_CONDA_SH` 设为该机器 `conda info --base` 下的 `etc/profile.d/conda.sh`。作业目录必须是新目录；中断后需按实际 DeepMD checkpoint 和官方 `--restart` 语义恢复，不能对已有目录盲目再次启动。固定的上游实验提交会恢复模型、优化器和训练步数；尚未确认它保存数据加载器的随机状态和样本位置，因此不能承诺断点续训后的样本顺序与不中断时完全相同。该模板尚未在 SCNet 上执行。
 
-## 4. 流式验证和最终测试
+## 4. 数值试验、流式验证和最终测试
+
+从短程 smoke 结果取得实际 checkpoint 路径，设置 `DPA_CKPT_1` 后，可先对原索引中的少量 **train** 帧检查能量—力有限差分与晶格平移不变性：
+
+```bash
+python -m dpa4c_sog.preflight --database "$DPA_INDEX" --model "$DPA_CKPT_1" --kind dpa \
+  --output "$DPA_ROOT/reports/dpa_preflight.json" --charge-spin 0 1
+```
+
+工具写明位移和容差，超出容差时报告失败。得到 SOG 的实验 checkpoint 后可将 `--kind` 改为 `sog`、使用新的报告路径重复检查；该小样本检查不验证训练中 SOG 参数的梯度、网格收敛或显著长程响应，也不能代替 upstream 失败测试的修复。
 
 每次完整读取原始索引中的 val 帧，逐个评估保留下来的候选 checkpoint。将下例环境变量设为实际 checkpoint 路径；可重复 `--checkpoint` 添加候选：
 
@@ -102,10 +111,12 @@ python -m dpa4c_sog.validate --database "$DPA_INDEX" --kind dpa \
 报告 `validation.json` 中的 `selected_checkpoint` 按完整 val 力分量 MAE 选择。通过 SOG 数值检查并训练成功后，使用相同方法、`--kind sog` 及其候选 checkpoint 选择 SOG 模型。固定两者后才运行 test：
 
 ```bash
-python -m dpa4c_sog.predict --database "$DPA_INDEX" --dpa "$SELECTED_DPA" --sog "$SELECTED_SOG" --output "$DPA_ROOT/paired_test.jsonl" --charge-spin 0 1
+python -m dpa4c_sog.predict --database "$DPA_INDEX" --dpa "$SELECTED_DPA" --sog "$SELECTED_SOG" \
+  --dpa-validation "$DPA_ROOT/val_dpa/validation.json" --sog-validation "$DPA_ROOT/val_sog/validation.json" \
+  --output "$DPA_ROOT/paired_test.jsonl" --charge-spin 0 1
 python -m dpa4c_sog.metrics --input "$DPA_ROOT/paired_test.jsonl" --output "$DPA_ROOT/test_report" --bins 200
 ```
 
-输出 `metrics.json`、`dpa_parity.png` 和 `sog_parity.png`；每个图含能量/原子与力分量两个面板、1:1 线和全部测试数据的密度。Mean difference 定义为预测减 DFT；MAE、RMSE、R² 也分别统计能量/原子和全部力分量，R² 在参考值方差为零时标为未定义。预测状态文件与 SHA 用于阻止使用未完成的结果。
+预测前必须提供两份完整 val 报告，工具核对各自选中的 checkpoint 哈希、相同的索引与验证帧、电子态条件和最小 val 力 MAE。输出 `metrics.json`、`dpa_parity.png` 和 `sog_parity.png`；每个图含能量/原子与力分量两个面板、1:1 线和全部测试数据的密度。Mean difference 定义为预测减 DFT；MAE、RMSE、R² 也分别统计能量/原子和全部力分量，R² 在参考值方差为零时标为未定义。预测状态文件与 SHA 用于阻止使用未完成的结果。
 
-SOG 模型从已训练短程 checkpoint 继续微调，因而经过额外优化；即使 test 指标改善，也不能仅凭这次比较断言全部改善来自长程项。要判断增益，建议额外比较同等继续训练步数和数据的短程模型，并设计独立长程响应测试。
+目标是让 SOG 模型从已训练短程 checkpoint 继续微调；需要另行保存训练命令、起始 checkpoint 哈希与日志来证明继承关系，当前预测工具不会自行证明。SOG 模型经过额外优化，即使 test 指标改善，也不能仅凭这次比较断言全部改善来自长程项。要判断增益，建议额外比较同等继续训练步数和数据的短程模型，并设计独立长程响应测试。

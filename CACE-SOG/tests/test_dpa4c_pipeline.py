@@ -91,7 +91,9 @@ def test_complete_cross_machine_pipeline_with_mocked_predictions(tmp_path):
     assert base_val["frames_per_checkpoint"] == sog_val["frames_per_checkpoint"] == 2
     assert base_val["frame_identity_sha256"] == sog_val["frame_identity_sha256"]
     paired = remote / "paired.jsonl"
-    result = predict(bound_index, dpa_paths[1], sog_paths[1], paired, (0, 1), loader=fake_models.get)
+    result = predict(bound_index, dpa_paths[1], sog_paths[1], paired, (0, 1),
+                     validation_reports={"dpa": remote / "dpa-val/validation.json", "sog": remote / "sog-val/validation.json"},
+                     loader=fake_models.get)
     assert result["status"] == "complete" and result["frames_written"] == 2
     assert result["index_identity"] == alignment["bound_index_identity"]
     report = evaluate_predictions(paired, remote / "comparison", bins=16)

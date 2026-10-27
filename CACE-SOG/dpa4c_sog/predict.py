@@ -86,8 +86,41 @@ def _model_details(model, label):
         getter = getattr(model, field, None)
         if getter is None or int(getter()) != 0:
             raise ValueError(f"{label}: this predictor requires zero additional fparam/aparam dimensions")
+    fitting = config.get("fitting_net")
+    if fitting is not None and not isinstance(fitting, dict):
+        raise ValueError(f"{label}: invalid fitting_net checkpoint metadata")
     return {"type_map": type_map, "descriptor": "dpa4c", "has_charge_spin_embedding": True,
+            "descriptor_metadata": descriptor, "fitting_net_metadata": fitting,
             "long_range": lr if lr else None, "additional_frame_and_atomic_parameters": 0}
+
+
+def _compare_architecture(models):
+    """Compare shared, reported model fields without assuming default expansion."""
+    checked, missing = [], []
+    for section, field in (("descriptor", "channels"), ("descriptor", "lmax"),
+                           ("descriptor", "radial_modes"), ("descriptor", "rcut"),
+                           ("fitting_net", "neuron")):
+        name = section + "." + field
+        key = section + "_metadata"
+        left = models["dpa"].get(key) or {}
+        right = models["sog"].get(key) or {}
+        if field not in left or field not in right:
+            missing.append(name)
+            continue
+        left_value, right_value = left[field], right[field]
+        if field == "neuron":
+            if not isinstance(left_value, list) or not isinstance(right_value, list):
+                raise ValueError("fitting_net.neuron metadata must be a list on both models")
+        elif (isinstance(left_value, bool) or isinstance(right_value, bool) or
+              not isinstance(left_value, (int, float)) or not isinstance(right_value, (int, float)) or
+              not math.isfinite(left_value) or not math.isfinite(right_value)):
+            raise ValueError(f"{name} metadata must be finite numbers on both models")
+        if left_value != right_value:
+            raise ValueError(f"baseline and SOG architecture mismatch: {name}")
+        checked.append(name)
+    return {"status": "partially_compared" if missing else "matched_for_checked_fields",
+            "matched_fields": checked, "not_compared_fields": missing,
+            "note": "Only these fields were compared when reported by both checkpoints; this does not verify initialization or full architecture identity."}
 
 
 def _evaluate(model, details, atoms, condition, label):
@@ -147,7 +180,74 @@ def _default_loader(path):
     return DeepPot(str(path), auto_batch_size=False)
 
 
-def predict(database, dpa, sog, output, charge_spin, *, loader=None, progress_seconds=30):
+def _validation_frames(reader):
+    """Recreate the identity used by the streaming validation report."""
+    expected = reader.counts(CHANNEL, "val")
+    if expected <= 0:
+        raise ValueError("the indexed sog_candidates/val split is empty")
+    digest = hashlib.sha256()
+    count = 0
+    for ordinal, record in enumerate(reader.iter_records([CHANNEL], "val")):
+        if record["channel"] != CHANNEL or record["split"] != "val" or record["ordinal"] != ordinal:
+            raise ValueError("validation records are not in contiguous ordinal order")
+        digest.update(json.dumps([ordinal, record["id"], record["sha256"],
+            record["natoms"], record["component_id"]], separators=(",", ":"),
+            ensure_ascii=True).encode("ascii") + b"\n")
+        count += 1
+    if count != expected:
+        raise ValueError("validation record count differs from the complete index")
+    reader.verify_sources()
+    return count, digest.hexdigest()
+
+
+def _verified_validation(path, label, checkpoint_sha, identity, frame_count, frame_digest):
+    """Require a completed matching full-validation selection before test."""
+    path = Path(path).expanduser().resolve(strict=True)
+    before = _stat(path)
+    if before[0] > 4 * 1024 * 1024:
+        raise ValueError(f"{label}: validation report exceeds size limit")
+    with path.open("rb") as stream:
+        raw = stream.read(4 * 1024 * 1024 + 1)
+    if len(raw) > 4 * 1024 * 1024 or _stat(path) != before:
+        raise ValueError(f"{label}: validation report changed while reading")
+    try:
+        report = json.loads(raw.decode("utf-8-sig"))
+    except (ValueError, UnicodeError) as exc:
+        raise ValueError(f"{label}: invalid validation report") from exc
+    if not isinstance(report, dict):
+        raise ValueError(f"{label}: validation report must be an object")
+    if (report.get("status") != "complete" or report.get("kind") != label or
+            report.get("channel") != CHANNEL or report.get("split") != "val" or
+            report.get("test_split_read") is not False):
+        raise ValueError(f"{label}: requires a completed {label} validation on sog_candidates/val")
+    if (report.get("condition") != [0., 1.] or report.get("index_identity") != identity or
+            report.get("frames_per_checkpoint") != frame_count or
+            report.get("frame_identity_sha256") != frame_digest):
+        raise ValueError(f"{label}: validation condition, bound index or validation frames differ")
+    if report.get("selected_checkpoint_sha256") != checkpoint_sha:
+        raise ValueError(f"{label}: checkpoint is not the validation-selected checkpoint")
+    candidates = report.get("candidates")
+    selected = report.get("selected_index")
+    if (not isinstance(candidates, list) or not candidates or isinstance(selected, bool) or
+            not isinstance(selected, int) or not 0 <= selected < len(candidates)):
+        raise ValueError(f"{label}: invalid validation candidate selection")
+    errors = []
+    for candidate in candidates:
+        if not isinstance(candidate, dict) or candidate.get("frames") != frame_count or candidate.get("frame_identity_sha256") != frame_digest:
+            raise ValueError(f"{label}: validation candidate frame coverage differs")
+        force = candidate.get("force")
+        value = force.get("mae") if isinstance(force, dict) else None
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+            raise ValueError(f"{label}: invalid validation force MAE")
+        errors.append(value)
+    if candidates[selected].get("checkpoint_sha256") != checkpoint_sha or selected != min(range(len(errors)), key=errors.__getitem__):
+        raise ValueError(f"{label}: report does not select the minimum validation force MAE")
+    return {"path": str(path), "sha256": hashlib.sha256(raw).hexdigest(),
+            "selected_checkpoint_sha256": checkpoint_sha, "frames": frame_count,
+            "frame_identity_sha256": frame_digest, "selection": "minimum val force MAE"}, before
+
+
+def predict(database, dpa, sog, output, charge_spin, *, validation_reports=None, loader=None, progress_seconds=30):
     """Evaluate all original test frames; model loader is injectable for tests."""
     database, dpa, sog = (Path(x).expanduser().resolve(strict=True) for x in (database, dpa, sog))
     output = Path(output).expanduser().resolve()
@@ -177,6 +277,8 @@ def predict(database, dpa, sog, output, charge_spin, *, loader=None, progress_se
         sog_sha, sog_stat = _hash_file(sog)
         if dpa_sha == sog_sha:
             raise ValueError("baseline and SOG checkpoints have identical SHA256")
+        if not isinstance(validation_reports, dict) or set(validation_reports) != {"dpa", "sog"}:
+            raise ValueError("completed DPA and SOG validation reports are required before test")
         state["checkpoints"] = {"dpa": {"path": str(dpa), "sha256": dpa_sha},
                                 "sog": {"path": str(sog), "sha256": sog_sha}}
         loader = loader or _default_loader
@@ -184,12 +286,23 @@ def predict(database, dpa, sog, output, charge_spin, *, loader=None, progress_se
         models = {"dpa": _model_details(base_model, "dpa"), "sog": _model_details(sog_model, "sog")}
         if set(models["dpa"]["type_map"]) != set(models["sog"]["type_map"]):
             raise ValueError("baseline and SOG checkpoint type maps contain different elements")
+        state["architecture_comparison"] = _compare_architecture(models)
         state["models"] = models
         with IndexReader(database) as reader:
             total = reader.counts(CHANNEL, SPLIT)
             if total == 0:
                 raise ValueError("the indexed sog_candidates/test split is empty")
-            state.update(index_identity=_index_identity(reader.metadata), index_path=str(database), expected_frames=total)
+            identity = _index_identity(reader.metadata)
+            index_stat = _stat(reader.database)
+            val_count, val_digest = _validation_frames(reader)
+            validation = {}
+            report_stats = {}
+            for label, checkpoint_sha in (("dpa", dpa_sha), ("sog", sog_sha)):
+                validation[label], report_stats[label] = _verified_validation(
+                    validation_reports[label], label, checkpoint_sha, identity, val_count, val_digest)
+            state.update(index_identity=identity, index_path=str(database), expected_frames=total,
+                         validation_provenance=validation, fine_tune_parent_not_verified=True,
+                         fine_tune_note="SOG initialization from the selected DPA checkpoint requires separate training provenance")
             handle, name = tempfile.mkstemp(prefix="." + output.name + ".partial-", dir=str(output.parent))
             partial = Path(name)
             state["partial_path"] = str(partial)
@@ -224,6 +337,11 @@ def predict(database, dpa, sog, output, charge_spin, *, loader=None, progress_se
             if state["frames_written"] != total:
                 raise ValueError("indexed count and number of predicted test frames differ")
             reader.verify_sources()
+            if _stat(reader.database) != index_stat:
+                raise ValueError("bound index changed during prediction")
+        for label, info in state["validation_provenance"].items():
+            if _stat(Path(info["path"])) != report_stats[label]:
+                raise ValueError(f"{label}: validation report changed during prediction")
         if _stat(dpa) != dpa_stat or _stat(sog) != sog_stat:
             raise ValueError("checkpoint changed during evaluation")
         result_sha, _ = _hash_file(partial)
@@ -248,12 +366,15 @@ def main(argv=None):
     parser.add_argument("--database", required=True, type=Path)
     parser.add_argument("--dpa", required=True, type=Path)
     parser.add_argument("--sog", required=True, type=Path)
+    parser.add_argument("--dpa-validation", required=True, type=Path, help="completed DPA streaming val report")
+    parser.add_argument("--sog-validation", required=True, type=Path, help="completed SOG streaming val report")
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--charge-spin", nargs=2, type=float, required=True, metavar=("CHARGE", "MULTIPLICITY"))
     parser.add_argument("--progress-seconds", type=float, default=30)
     args = parser.parse_args(argv)
     try:
         result = predict(args.database, args.dpa, args.sog, args.output, args.charge_spin,
+                         validation_reports={"dpa": args.dpa_validation, "sog": args.sog_validation},
                          progress_seconds=args.progress_seconds)
         print(json.dumps(result, indent=2, ensure_ascii=False, allow_nan=False))
         return 0

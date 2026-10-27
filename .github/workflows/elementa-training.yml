@@ -55,7 +55,7 @@ jobs:
         working-directory: CACE-SOG
         env:
           PYTHONPATH: .
-        run: python -m pytest tests/test_elementa_data.py tests/test_elementa_baseline.py tests/test_elementa_transfer.py tests/test_elementa_dispatch.py tests/test_elementa_portable_cli.py tests/test_dpa4c_convert.py tests/test_dpa4c_integrity.py tests/test_dpa4c_alignment.py tests/test_dpa4c_prepare.py tests/test_dpa4c_predict.py tests/test_dpa4c_validate.py tests/test_dpa4c_metrics.py tests/test_dpa4c_pipeline.py tests/test_dpa4c_smoke.py -q
+        run: python -m pytest tests/test_elementa_data.py tests/test_elementa_baseline.py tests/test_elementa_transfer.py tests/test_elementa_dispatch.py tests/test_elementa_portable_cli.py tests/test_dpa4c_convert.py tests/test_dpa4c_integrity.py tests/test_dpa4c_alignment.py tests/test_dpa4c_prepare.py tests/test_dpa4c_predict.py tests/test_dpa4c_validate.py tests/test_dpa4c_metrics.py tests/test_dpa4c_pipeline.py tests/test_dpa4c_smoke.py tests/test_dpa4c_preflight.py -q
       - name: Check Windows preprocessing script syntax
         shell: pwsh
         run: |
