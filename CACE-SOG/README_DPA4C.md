@@ -16,6 +16,23 @@
 
 训练数据加载也有待解决的规模限制：当前 DeepMD NPY loader 为每个已访问的 system 保留一个 set 的缓存，内存可能随遇到的组成数增长；系统列表、目录扫描和按系统抽样也随 system 数增加。微调启动时的统计还会汇集各个 system 的样本，可能在第一个优化步骤之前占用大量内存。转换器的 `--set-frames` 只限制单个 set，**不能保证训练进程总内存有上限**。完整 354 万训练帧前必须适配或更换训练加载器和统计路径，再在 A800 主机上测试；仅把全数据的训练步数设为 200 不能成为安全的小样本试跑。
 
+## 先从已有索引准备小样本试跑
+
+不必先转换全部数据：在 SCNet 上完成原始训练索引的上传、bind 和源文件核验后，用已绑定的索引直接生成调试数据。先将上面第 3 节列出的配套 Neo 配置和权重上传到 `$DPA_ROOT`。以下命令在已分配的作业节点上执行，输出目录必须不存在；确认训练索引是完整状态，且其引用的 export 文件均已上传。路径按实际情况调整。
+
+```bash
+export DPA_ROOT=/work/home/einlovestan/datasets/ELEMENTA_CACE_SOG/dpa4c
+export DPA_INDEX=/work/home/einlovestan/datasets/ELEMENTA_CACE_SOG/indices/elementa.sqlite3
+python -m dpa4c_sog.index_smoke --database "$DPA_INDEX" \
+  --release-config "$DPA_ROOT/DPA4C-Neo-OMol25-100M-v20260820.json" \
+  --output "$DPA_ROOT/index_smoke" --assume-charge-spin 0 1 \
+  --frames-per-split 4 --steps 200
+```
+
+这只取 train 和 val 各最多 4 帧，不读取 test；限制仅针对调试副本，全量数据不受影响。配置含本机绝对路径，应在训练所在机器生成。检查 `smoke_status.json` 为 `complete` 后，按第 3 节设置 `DPA_ENV`、`DPA_PRETRAINED` 和 `DPA_RUN`，将 `DPA_INPUT` 改为 `$DPA_ROOT/index_smoke/input_dpa4c_smoke.json` 再提交短程模型试跑。必须先在该环境核实 DeepMD 与 A800 的兼容性。小样本试跑和本仓库的模拟测试均不能证明全量加载器或周期 SOG 已可用。
+
+以下全量转换和上传流程保留供后续使用；**请先解决上述全量加载器和统计内存问题，再决定是否执行**。
+
 ## 1. Windows 转换完整数据
 
 完成原先的训练索引后，在本仓库 `CACE-SOG` 目录激活具有 NumPy 和 ASE 的 CPU 环境：
