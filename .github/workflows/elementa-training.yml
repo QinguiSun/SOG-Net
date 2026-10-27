@@ -3,13 +3,16 @@ on:
   pull_request:
     paths:
       - 'CACE-SOG/cace_sog_training/**'
+      - 'CACE-SOG/dpa4c_sog/**'
       - 'CACE-SOG/tests/**'
       - 'CACE-SOG/examples/elementa/**'
+      - 'CACE-SOG/examples/dpa4c/**'
       - '.github/workflows/elementa-training.yml'
   push:
     branches: [main]
     paths:
       - 'CACE-SOG/cace_sog_training/**'
+      - 'CACE-SOG/dpa4c_sog/**'
       - 'CACE-SOG/tests/**'
       - '.github/workflows/elementa-training.yml'
 jobs:
@@ -31,13 +34,14 @@ jobs:
           PYTHONPATH: .
           OMP_NUM_THREADS: '1'
           MPLCONFIGDIR: /tmp/elementa-mpl
-        run: python -m pytest tests/test_elementa_*.py -q
+        run: python -m pytest tests/test_elementa_*.py tests/test_dpa4c_*.py -q
       - name: Check SCNet shell entry points
         working-directory: CACE-SOG
         run: |
           bash -n examples/elementa/run_single_gpu.sh
           bash -n examples/elementa/train_a800.sbatch
           bash -n examples/elementa/index_cpu.sbatch
+          bash -n examples/dpa4c/baseline_a800.sbatch
   windows-preprocessing:
     runs-on: windows-latest
     steps:
@@ -51,7 +55,7 @@ jobs:
         working-directory: CACE-SOG
         env:
           PYTHONPATH: .
-        run: python -m pytest tests/test_elementa_data.py tests/test_elementa_baseline.py tests/test_elementa_transfer.py tests/test_elementa_dispatch.py tests/test_elementa_portable_cli.py -q
+        run: python -m pytest tests/test_elementa_data.py tests/test_elementa_baseline.py tests/test_elementa_transfer.py tests/test_elementa_dispatch.py tests/test_elementa_portable_cli.py tests/test_dpa4c_convert.py tests/test_dpa4c_integrity.py tests/test_dpa4c_alignment.py tests/test_dpa4c_prepare.py tests/test_dpa4c_predict.py tests/test_dpa4c_validate.py tests/test_dpa4c_metrics.py tests/test_dpa4c_pipeline.py tests/test_dpa4c_smoke.py -q
       - name: Check Windows preprocessing script syntax
         shell: pwsh
         run: |
