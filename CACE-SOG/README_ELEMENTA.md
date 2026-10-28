@@ -1,5 +1,9 @@
 # ELEMENTA large-scale CACE-SOG training
 
+For the experimental DPA4C baseline and SOG comparison, see the separate
+[DPA4C research workflow](README_DPA4C.md) and its outstanding validation and
+data-loader limitations before starting an SCNet job.
+
 For the current GPU-only SCNet access, use [Windows preparation and DPDispatcher
 submission](docs/elementa_windows_scnet.md): prepare a complete disk index on
 Windows, seal it, upload the immutable data and bundle once, bind the new paths
