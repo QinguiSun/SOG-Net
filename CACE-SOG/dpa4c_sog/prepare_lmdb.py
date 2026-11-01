@@ -14,10 +14,15 @@ from .index_smoke import _identity, _release
 from .prepare import sha256
 
 
-def prepare(database, release_config, converted, output, steps, batch_size, seed):
-    for name, value, minimum in (('steps', steps, 1), ('batch_size', batch_size, 1), ('seed', seed, 0)):
+def prepare(database, release_config, converted, output, steps, batch_size, seed,
+            save_every=2000, keep_checkpoints=None):
+    for name, value, minimum in (('steps', steps, 1), ('batch_size', batch_size, 1),
+                                 ('seed', seed, 0), ('save_every', save_every, 1)):
         if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
             raise ValueError(f'{name} must be an integer >= {minimum}')
+    if keep_checkpoints is not None and (isinstance(keep_checkpoints, bool) or
+            not isinstance(keep_checkpoints, int) or keep_checkpoints < 1):
+        raise ValueError('keep_checkpoints must be a positive integer')
     data = Path(converted).expanduser().resolve(strict=True)
     target = Path(output).expanduser().resolve()
     if target.exists():
@@ -65,8 +70,11 @@ def prepare(database, release_config, converted, output, steps, batch_size, seed
                      'validation_data': {'systems': str(data / 'val.lmdb'), 'batch_size': batch_size, 'numb_batch': 1},
                      'num_steps': steps, 'seed': seed, 'enable_compile': False, 'enable_ema': False})
     # Always emit at least one checkpoint even for a short requested run.
-    training['save_freq'] = min(2000, steps)
-    training.setdefault('max_ckpt_keep', 3)
+    training['save_freq'] = min(save_every, steps)
+    if keep_checkpoints is None:
+        training.setdefault('max_ckpt_keep', 3)
+    else:
+        training['max_ckpt_keep'] = keep_checkpoints
     learning = config.setdefault('learning_rate', {})
     learning['start_lr'] = 1e-4
     if 'stop_lr' in learning:
@@ -80,6 +88,7 @@ def prepare(database, release_config, converted, output, steps, batch_size, seed
               'source_counts': counts, 'release_config_sha256': release_hash,
               'conversion_status_sha256': status_hash, 'converted_hashes': hashes,
               'config_sha256': sha256(config_path), 'condition': [0, 1],
+              'save_every': training['save_freq'], 'keep_checkpoints': training['max_ckpt_keep'],
               'condition_is_not_measured_dft_state': True,
               'sampling': 'one LMDB logical system per split; fixed steps do not imply full epoch',
               'bias_note': 'Fine-tune startup statistics must be train-only; verify LMDB statistics and elemental coverage before use.',
@@ -95,9 +104,13 @@ def main():
         parser.add_argument('--' + key, required=True)
     for key in ('steps', 'batch-size', 'seed'):
         parser.add_argument('--' + key, required=True, type=int)
+    parser.add_argument('--save-every', type=int, default=2000,
+                        help='checkpoint interval in steps, capped at total steps (default 2000)')
+    parser.add_argument('--keep-checkpoints', type=int,
+                        help='maximum retained checkpoints; default keeps release setting or 3')
     a = parser.parse_args()
     print(json.dumps(prepare(a.database, a.release_config, a.converted, a.output,
-                             a.steps, a.batch_size, a.seed), indent=2))
+                             a.steps, a.batch_size, a.seed, a.save_every, a.keep_checkpoints), indent=2))
 
 
 if __name__ == '__main__':
