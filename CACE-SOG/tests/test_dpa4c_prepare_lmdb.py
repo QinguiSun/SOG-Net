@@ -43,3 +43,27 @@ def test_reject_debug_and_changed_data(tmp_path):
         f.write('tamper')
     with pytest.raises(ValueError, match='SHA-256'):
         prepare(db, release, data2, tmp_path / 'bad-hash', 5, 1, 4)
+
+
+def test_checkpoint_schedule_is_configurable_and_recorded(tmp_path):
+    db, release, _, data = setup_data(tmp_path)
+    out = tmp_path / 'scheduled'
+    report = prepare(db, release, data, out, 250, 1, 42,
+                     save_every=25, keep_checkpoints=7)
+    config = json.loads((out / 'input_dpa4c_lmdb.json').read_text())
+    assert config['training']['save_freq'] == report['save_every'] == 25
+    assert config['training']['max_ckpt_keep'] == report['keep_checkpoints'] == 7
+    # A short requested run must save no later than its final step.
+    out2 = tmp_path / 'short'
+    report2 = prepare(db, release, data, out2, 8, 1, 42, save_every=25)
+    assert report2['save_every'] == 8
+
+
+@pytest.mark.parametrize('kwargs', [
+    {'save_every': 0}, {'save_every': True}, {'keep_checkpoints': 0},
+    {'keep_checkpoints': True},
+])
+def test_checkpoint_schedule_rejects_invalid_values(tmp_path, kwargs):
+    with pytest.raises(ValueError):
+        prepare(tmp_path / 'missing', tmp_path / 'missing', tmp_path / 'missing',
+                tmp_path / 'out', 10, 1, 42, **kwargs)
