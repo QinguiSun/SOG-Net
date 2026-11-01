@@ -1,4 +1,5 @@
 import json
+import hashlib
 
 import pytest
 
@@ -31,7 +32,8 @@ def test_original_and_finetuned_paired_test_and_plots(tmp_path):
     predictions = tmp_path / 'test.jsonl'
     result = predict(db, before, after, predictions, (0, 1),
                      validation_report=val_dir / 'validation.json',
-                     loader=lambda p: Shifted('dpa') if p == after else FakeDeepPot('dpa'), progress_seconds=1000)
+                     loader=lambda p: Shifted('dpa') if p == after else FakeDeepPot('dpa'), progress_seconds=1000,
+                     expected_pretrained_sha256=hashlib.sha256(b'raw-pretrained').hexdigest())
     assert result['status'] == 'complete' and result['frames_written'] == 2
     assert set(result['checkpoints']) == {'pretrained', 'finetuned'}
     rows = [json.loads(s) for s in predictions.read_text().splitlines()]
@@ -66,7 +68,8 @@ def test_shards_require_full_nonoverlapping_coverage(tmp_path, monkeypatch):
     for i, path in enumerate(shards):
         state = predict(db, before, after, path, (0, 1), start=i, end=i+1,
                         validation_report=val_dir / 'validation.json',
-                        loader=lambda _: FakeDeepPot('dpa'), progress_seconds=1000)
+                        loader=lambda _: FakeDeepPot('dpa'), progress_seconds=1000,
+                        expected_pretrained_sha256=hashlib.sha256(b'raw-pretrained').hexdigest())
         assert state['is_shard'] and state['expected_frames'] == 1
     with pytest.raises(ValueError, match='individual shard'):
         evaluate_predictions(shards[0], tmp_path / 'bad-plot', bins=16)
@@ -88,3 +91,21 @@ def test_shards_require_full_nonoverlapping_coverage(tmp_path, monkeypatch):
     with pytest.raises(ValueError):
         merge(shards, tmp_path / 'tampered.jsonl')
     assert not (tmp_path / 'tampered.jsonl').exists()
+
+
+def test_calibrated_checkpoint_rejected_as_original(tmp_path):
+    source = tmp_path / 'export'
+    exported_fixture(source, train=2, val=1, test=2)
+    db = tmp_path / 'index.sqlite3'
+    build_index(source, db)
+    calibrated = tmp_path / 'calibrated.pt'
+    trained = tmp_path / 'trained.pt'
+    calibrated.write_bytes(b'train-only-calibrated')
+    trained.write_bytes(b'fine-tuned')
+    output = tmp_path / 'wrong-baseline.jsonl'
+    with pytest.raises(ValueError, match='original released DPA4C checkpoint'):
+        predict(db, calibrated, trained, output, (0, 1),
+                validation_report=tmp_path / 'unused.json',
+                loader=lambda _: FakeDeepPot('dpa'))
+    assert not output.exists()
+    assert json.loads(output.with_name(output.name + '.status.json').read_text())['status'] == 'failed'
