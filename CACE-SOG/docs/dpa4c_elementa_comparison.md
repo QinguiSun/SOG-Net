@@ -24,9 +24,12 @@ is only for debug and marks the output accordingly. It uses a disk-backed
 record store, but metadata memory is O(frames), capped by
 `--max-frames-per-split`. All frames use one logical source system: sampling
 weights are frame-level, not parent-material-balanced. Map size and free disk
-space need an explicit check before full conversion. Interrupted conversion
-cannot currently resume and must be restarted in a new directory. Never treat
-partial conversion status as complete.
+space need an explicit check before full conversion. The original `index_lmdb`
+converter cannot resume after interruption. An independent experimental
+`index_lmdb_resume` converter provides transaction-based recovery, tested with
+process termination on local LMDB; it still needs a kill/restart test on the
+SCNet filesystem and cannot resume old converter output. Never treat partial
+conversion status as complete.
 
 On SCNet, `examples/elementa/dpa4c_lmdb_probe.sbatch` inspects the installed
 environment. `examples/elementa/dpa4c_lmdb_smoke.sbatch` builds a 16-frame
