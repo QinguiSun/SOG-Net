@@ -16,8 +16,8 @@ very large force errors. First run the LMDB smoke on the actual installed
 DeepMD build, verify labels, training and checkpoint reload, and measure RAM,
 GPU memory and throughput at increasing scales. LMDB metadata and samplers
 scale with frame count. Do not start full conversion or production training
-merely because the Python tests pass. The full training launcher, robust bias
-initialization and full-scale memory envelope remain to be validated.
+merely because the Python tests pass. The production training launcher,
+robust bias initialization and full-scale memory envelope remain to be validated.
 
 `index_lmdb` defaults to every train and val frame, no test; `--limit-per-split`
 is only for debug and marks the output accordingly. It uses a disk-backed
@@ -35,6 +35,16 @@ On SCNet, `examples/elementa/dpa4c_lmdb_probe.sbatch` inspects the installed
 environment. `examples/elementa/dpa4c_lmdb_smoke.sbatch` builds a 16-frame
 per split debugging dataset and runs 10 steps. Both are configured for the
 known SCNet paths and GPU partition; the smoke output is not a trained model.
+`dpa4c_lmdb_scale.sbatch` benchmarks 10,000 debug frames per split.
+`dpa4c_lmdb_resume_check.sbatch` probes interruption recovery on the SCNet
+filesystem and checks decoded frames against the original index.
+
+`prepare_lmdb` generates a config only after a complete unsampled conversion
+passes source and hash checks. `dpa4c_train_lmdb.sbatch` provides guarded
+start/resume entry points and checks the released checkpoint, input hashes,
+and repository commit before calling DeePMD. This launcher has local tests
+but has not yet been verified on SCNet. The user must explicitly set the
+number of optimizer steps; a fixed number does not prove every frame is seen.
 
 ## Held-out evaluation after a production fine-tune exists
 
