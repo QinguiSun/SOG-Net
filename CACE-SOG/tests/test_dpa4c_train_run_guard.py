@@ -65,3 +65,31 @@ def test_debug_and_wrong_weights_rejected(tmp_path, monkeypatch):
 def test_batch_script_syntax():
     script = Path(__file__).resolve().parent.parent / 'examples/elementa/dpa4c_train_lmdb.sbatch'
     subprocess.run(['bash', '-n', str(script)], check=True)
+
+
+def test_calibrated_initialization_is_bound_to_index_and_checkpoint(tmp_path, monkeypatch):
+    db, release, pretrained, data, prepared = fixture(tmp_path, monkeypatch)
+    commit = 'a' * 40
+    raw = guard.checked_files(prepared, db, release, pretrained, commit)
+    calibrated = tmp_path / 'calibrated.pt'; calibrated.write_bytes(b'pilot-bias')
+    monkeypatch.setattr(guard, 'PILOT_BIAS_SHA256', digest(calibrated))
+    monkeypatch.setattr(guard, 'PILOT_INDEX_IDENTITY', raw['source_index_identity'])
+    checked = guard.checked_files(prepared, db, release, pretrained, commit,
+        initialization='pilot-calibrated', calibrated=calibrated)
+    assert checked['initialization'] == 'pilot-calibrated'
+    assert checked['pretrained_sha256'] == digest(pretrained)
+    assert checked['calibrated_checkpoint_sha256'] == digest(calibrated)
+    run = tmp_path / 'run'; run.mkdir(); guard.start(run, checked)
+    checkpoint = run / 'model.ckpt-10.pt'; checkpoint.write_bytes(b'weights')
+    with pytest.raises(ValueError, match='provenance'):
+        guard.resume(run, raw, checkpoint, digest(checkpoint))
+    guard.resume(run, checked, checkpoint, digest(checkpoint))
+    calibrated.write_bytes(b'corrupted')
+    with pytest.raises(ValueError, match='calibrated checkpoint SHA'):
+        guard.checked_files(prepared, db, release, pretrained, commit,
+            initialization='pilot-calibrated', calibrated=calibrated)
+    calibrated.write_bytes(b'pilot-bias')
+    monkeypatch.setattr(guard, 'PILOT_INDEX_IDENTITY', '0' * 64)
+    with pytest.raises(ValueError, match='source index identity'):
+        guard.checked_files(prepared, db, release, pretrained, commit,
+            initialization='pilot-calibrated', calibrated=calibrated)
