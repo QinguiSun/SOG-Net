@@ -9,12 +9,15 @@
 
 # Usage: sbatch this-file start PREPARED RUN EXPECTED_COMMIT
 # Or:    sbatch this-file resume PREPARED RUN EXPECTED_COMMIT CHECKPOINT CHECKPOINT_SHA256
+# Set DPA_INIT_MODE explicitly to raw-finetune or pilot-calibrated for both start and resume.
 # This script does not establish numerical validity or full-scale memory safety.
 set -euo pipefail
 MODE=${1:?expected start or resume}
 PREPARED=${2:?expected preparation directory}
 RUN=${3:?expected run directory}
 EXPECTED_COMMIT=${4:?expected full repository commit}
+DPA_INIT_MODE=${DPA_INIT_MODE:?set DPA_INIT_MODE to raw-finetune or pilot-calibrated}
+case "$DPA_INIT_MODE" in raw-finetune|pilot-calibrated) ;; *) echo 'invalid DPA_INIT_MODE'; exit 2;; esac
 case "$PREPARED" in /work/*) ;; *) echo 'preparation must be under /work'; exit 2;; esac
 case "$RUN" in /work/*) ;; *) echo 'run must be under /work'; exit 2;; esac
 case "$MODE" in
@@ -42,6 +45,7 @@ export APPTAINERENV_DPA_TRAIN_PREPARED="$PREPARED"
 export APPTAINERENV_DPA_TRAIN_RUN="$RUN"
 export APPTAINERENV_DPA_TRAIN_COMMIT="$ACTUAL_COMMIT"
 export APPTAINERENV_DPA_TRAIN_JOB="$SLURM_JOB_ID"
+export APPTAINERENV_DPA_INIT_MODE="$DPA_INIT_MODE"
 if [ "$MODE" = resume ]; then
   export APPTAINERENV_DPA_TRAIN_CHECKPOINT="$5"
   export APPTAINERENV_DPA_TRAIN_CHECKPOINT_SHA="$6"
@@ -53,6 +57,7 @@ ENV_DIR="$ROOT/env-deepmd-3.2.0-cuda129-retry-5415731"
 REPO=/work/home/einlovestan/projects/SOG-Net-dpa4c-finetune/CACE-SOG
 INDEX=/work/home/einlovestan/datasets/ELEMENTA_CACE_SOG/indices/elementa.sqlite3
 PRETRAINED="$ROOT/DPA4C-Neo-OMol25-100M-v20260820.pt"
+CALIBRATED="$ROOT/runs/dpa4c-bias-pilot-5416085/pretrained-pilot-bias.pt"
 RELEASE="$ROOT/DPA4C-Neo-OMol25-100M-v20260820.json"
 set +u
 source "$ENV_DIR/bin/activate" "$ENV_DIR"
@@ -66,7 +71,11 @@ test -r /.singularity.d/libs/libcuda.so.1
 cd "$REPO"
 python -c 'import deepmd, torch; print("DeePMD:",deepmd.__version__,"PyTorch:",torch.__version__); assert torch.cuda.is_available(); print("GPU:",torch.cuda.get_device_name(0))'
 args=(--mode "$DPA_TRAIN_MODE" --prepared "$DPA_TRAIN_PREPARED" --database "$INDEX"
-      --release "$RELEASE" --pretrained "$PRETRAINED" --repo-commit "$DPA_TRAIN_COMMIT" --run "$DPA_TRAIN_RUN")
+      --release "$RELEASE" --pretrained "$PRETRAINED" --repo-commit "$DPA_TRAIN_COMMIT" --run "$DPA_TRAIN_RUN"
+      --initialization "$DPA_INIT_MODE")
+if [ "$DPA_INIT_MODE" = pilot-calibrated ]; then
+  args+=(--calibrated "$CALIBRATED")
+fi
 if [ "$DPA_TRAIN_MODE" = resume ]; then
   args+=(--checkpoint "$DPA_TRAIN_CHECKPOINT" --checkpoint-sha256 "$DPA_TRAIN_CHECKPOINT_SHA")
 fi
@@ -76,7 +85,11 @@ MONITOR_PID=$!
 trap 'kill "$MONITOR_PID" 2>/dev/null || true' EXIT
 cd "$DPA_TRAIN_RUN"
 if [ "$DPA_TRAIN_MODE" = start ]; then
-  dp --pt-expt train input_dpa4c_lmdb.json --finetune "$PRETRAINED"
+  if [ "$DPA_INIT_MODE" = pilot-calibrated ]; then
+    dp --pt-expt train input_dpa4c_lmdb.json --init-model "$CALIBRATED"
+  else
+    dp --pt-expt train input_dpa4c_lmdb.json --finetune "$PRETRAINED"
+  fi
 else
   dp --pt-expt train input_dpa4c_lmdb.json --restart "$DPA_TRAIN_CHECKPOINT"
 fi
