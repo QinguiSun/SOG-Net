@@ -1,0 +1,67 @@
+import hashlib
+import json
+import subprocess
+from pathlib import Path
+import pytest
+from test_dpa4c_convert import make_dataset
+from test_dpa4c_index_smoke import release_file
+from dpa4c_sog.index_lmdb import convert
+from dpa4c_sog.prepare_lmdb import prepare
+from dpa4c_sog import train_run_guard as guard
+
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def fixture(tmp_path, monkeypatch):
+    pytest.importorskip('lmdb'); pytest.importorskip('msgpack')
+    _, db = make_dataset(tmp_path)
+    release = tmp_path / 'release.json'; release_file(release)
+    pretrained = tmp_path / 'pretrained.pt'; pretrained.write_bytes(b'original')
+    monkeypatch.setattr(guard, 'PRETRAINED_SHA256', digest(pretrained))
+    monkeypatch.setattr(guard, 'RELEASE_SHA256', digest(release))
+    data = tmp_path / 'data'; convert(db, data, map_size=16*1024*1024)
+    prepared = tmp_path / 'prepared'; prepare(db, release, data, prepared, 10, 1, 42)
+    return db, release, pretrained, data, prepared
+
+
+def test_start_restart_and_tamper_guards(tmp_path, monkeypatch):
+    db, release, pretrained, data, prepared = fixture(tmp_path, monkeypatch)
+    commit = 'a'*40
+    checked = guard.checked_files(prepared, db, release, pretrained, commit)
+    run = tmp_path / 'run'; run.mkdir(); guard.start(run, checked)
+    with pytest.raises(FileExistsError): guard.start(run, checked)
+    first = run / 'model.ckpt-5.pt'; first.write_bytes(b'first')
+    second = run / 'model.ckpt-10.pt'; second.write_bytes(b'latest')
+    with pytest.raises(ValueError, match='latest'):
+        guard.resume(run, checked, first, digest(first))
+    with pytest.raises(ValueError, match='SHA'):
+        guard.resume(run, checked, second, '0'*64)
+    guard.resume(run, checked, second, digest(second))
+    with pytest.raises(ValueError, match='provenance'):
+        guard.resume(run, dict(checked, repository_commit='b'*40), second, digest(second))
+    with (run / 'input_dpa4c_lmdb.json').open('a') as f: f.write(' ')
+    with pytest.raises(ValueError, match='configuration'):
+        guard.resume(run, checked, second, digest(second))
+    with (data / 'train.jsonl').open('a') as f: f.write('tamper')
+    with pytest.raises(ValueError, match='hash mismatch'):
+        guard.checked_files(prepared, db, release, pretrained, commit)
+
+
+def test_debug_and_wrong_weights_rejected(tmp_path, monkeypatch):
+    db, release, pretrained, data, prepared = fixture(tmp_path, monkeypatch)
+    pretrained.write_bytes(b'changed')
+    with pytest.raises(ValueError, match='checkpoint SHA'):
+        guard.checked_files(prepared, db, release, pretrained, 'a'*40)
+    pretrained.write_bytes(b'original')
+    path = prepared / 'preparation.json'
+    report = json.loads(path.read_text()); report['debug_only'] = True
+    path.write_text(json.dumps(report))
+    with pytest.raises(ValueError, match='non-debug'):
+        guard.checked_files(prepared, db, release, pretrained, 'a'*40)
+
+
+def test_batch_script_syntax():
+    script = Path(__file__).resolve().parent.parent / 'examples/elementa/dpa4c_train_lmdb.sbatch'
+    subprocess.run(['bash', '-n', str(script)], check=True)
