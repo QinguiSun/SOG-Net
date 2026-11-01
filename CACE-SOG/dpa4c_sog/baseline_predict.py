@@ -12,8 +12,9 @@ from cace_sog_training.data import IndexReader
 from .predict import (CHANNEL, SPLIT, _stat, _hash_file, _index_identity, _model_details,
                       _compare_architecture, _evaluate, _check_condition, _status, _default_loader,
                       _validation_frames, _verified_validation)
+from .train_run_guard import PRETRAINED_SHA256
 
-def predict(database, dpa, sog, output, charge_spin, *, validation_report=None, loader=None, progress_seconds=30, start=0, end=None):
+def predict(database, dpa, sog, output, charge_spin, *, validation_report=None, loader=None, progress_seconds=30, start=0, end=None, expected_pretrained_sha256=PRETRAINED_SHA256):
     """Evaluate all original test frames; model loader is injectable for tests."""
     database, dpa, sog = (Path(x).expanduser().resolve(strict=True) for x in (database, dpa, sog))
     output = Path(output).expanduser().resolve()
@@ -41,6 +42,8 @@ def predict(database, dpa, sog, output, charge_spin, *, validation_report=None, 
     try:
         dpa_sha, dpa_stat = _hash_file(dpa)
         sog_sha, sog_stat = _hash_file(sog)
+        if dpa_sha != expected_pretrained_sha256:
+            raise ValueError("pretrained checkpoint SHA256 does not match the original released DPA4C checkpoint")
         if dpa_sha == sog_sha:
             raise ValueError("pretrained and fine-tuned checkpoints have identical SHA256")
         if validation_report is None:
