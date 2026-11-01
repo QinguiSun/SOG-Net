@@ -48,9 +48,12 @@ number of optimizer steps; a fixed number does not prove every frame is seen.
 
 ## Held-out evaluation after a production fine-tune exists
 
-Use `dpa4c_sog.validate --kind dpa` to select among candidate checkpoints
-using the entire original validation split; the report and checkpoint must
-match the bound index. Each test `baseline_predict` invocation takes that
+Use `dpa4c_sog.validate --kind dpa` or `dpa4c_sog.validate_shards` to select
+among candidate checkpoints using the entire original validation split; the
+report and checkpoint must match the bound index. Sharded validation emits a
+report only after exact coverage, source identity and input hashes are checked.
+It is locally tested but has not yet been validated on SCNet. Each test
+`baseline_predict` invocation takes that
 report, the selected checkpoint, the *original* released checkpoint, and
 explicit `[0, 1]`. Use `--start` and `--end` for disjoint half-open ordinal
 ranges, keeping the status sidecar for each completed shard. A failed shard
