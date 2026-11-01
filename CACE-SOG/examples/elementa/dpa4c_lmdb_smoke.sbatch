@@ -15,6 +15,7 @@ test -d "$ROOTFS"
 test -f "$REPO/CACE-SOG/dpa4c_sog/index_lmdb.py"
 echo "NODE=$(hostname)"
 echo "REPOSITORY_COMMIT=$(cd "$REPO" && git rev-parse HEAD)"
+echo "CONVERTER_SHA256=$(sha256sum "$REPO/CACE-SOG/dpa4c_sog/index_lmdb.py")"
 module load apps/apptainer/1.3.4
 export APPTAINERENV_CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:?No Slurm GPU assignment}"
 export APPTAINERENV_DPA_SMOKE_JOB="$SLURM_JOB_ID"
