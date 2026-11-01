@@ -13,9 +13,18 @@ from .prepare import sha256
 
 PRETRAINED_SHA256 = 'fc42df87b4c81649755e33c64d7e95bc0584a353e01c8f313742b3f73aab412c'
 RELEASE_SHA256 = '96a92146afe26ccb5f9a6687bfa8bfd9013f3b1ff654fb40c949e220fa802e31'
+PILOT_BIAS_SHA256 = 'd6b95b6665dc9bf4b15f4f0c93ca4f6b2d9029b700a42ffcc65502f3cdda2355'
+PILOT_INDEX_IDENTITY = 'c07665508e5499fa61dcb5d2faa06ef81fdce40da68f0a88a308ecaf24795251'
 
 
-def checked_files(prepared, database, release, pretrained, repo_commit):
+def checked_files(prepared, database, release, pretrained, repo_commit, *,
+                  initialization='raw-finetune', calibrated=None):
+    if initialization not in ('raw-finetune', 'pilot-calibrated'):
+        raise ValueError('unknown initialization mode')
+    if initialization == 'raw-finetune' and calibrated is not None:
+        raise ValueError('raw-finetune cannot accept calibrated checkpoint')
+    if initialization == 'pilot-calibrated' and calibrated is None:
+        raise ValueError('pilot-calibrated requires calibrated checkpoint')
     prepared = Path(prepared).resolve(strict=True)
     config_path = prepared / 'input_dpa4c_lmdb.json'
     report_path = prepared / 'preparation.json'
@@ -57,6 +66,12 @@ def checked_files(prepared, database, release, pretrained, repo_commit):
             raise ValueError('bound index identity mismatch')
         if {s: reader.counts('sog_candidates', s) for s in ('train', 'val')} != report['source_counts']:
             raise ValueError('index frame counts mismatch')
+    if initialization == 'pilot-calibrated':
+        calibrated = Path(calibrated).resolve(strict=True)
+        if sha256(calibrated) != PILOT_BIAS_SHA256:
+            raise ValueError('pilot calibrated checkpoint SHA mismatch')
+        if identity != PILOT_INDEX_IDENTITY:
+            raise ValueError('pilot calibration source index identity mismatch')
     for split in ('train', 'val'):
         for kind, file in (('lmdb', data / (split + '.lmdb') / 'data.mdb'),
                            ('manifest', data / (split + '.jsonl'))):
@@ -75,6 +90,11 @@ def checked_files(prepared, database, release, pretrained, repo_commit):
             'source_index_identity': identity, 'source_counts': report['source_counts'],
             'conversion_status_sha256': report['conversion_status_sha256'],
             'converted_hashes': report['converted_hashes'], 'test_split_read': False,
+            'initialization': initialization,
+            'calibrated_checkpoint': str(calibrated) if calibrated is not None else None,
+            'calibrated_checkpoint_sha256': PILOT_BIAS_SHA256 if calibrated is not None else None,
+            'calibration_provenance': ('332 train-only pilot frames, 83 element composition rank; '
+                                       'biased sample, calibration is not zero-shot') if calibrated is not None else None,
             'input_assumption': '[0,1] is a model input, not a measured electronic state'}
 
 
@@ -119,8 +139,11 @@ def main():
         p.add_argument('--' + name, required=True)
     p.add_argument('--checkpoint')
     p.add_argument('--checkpoint-sha256')
+    p.add_argument('--initialization', choices=('raw-finetune', 'pilot-calibrated'), required=True)
+    p.add_argument('--calibrated')
     a = p.parse_args()
-    checked = checked_files(a.prepared, a.database, a.release, a.pretrained, a.repo_commit)
+    checked = checked_files(a.prepared, a.database, a.release, a.pretrained, a.repo_commit,
+                            initialization=a.initialization, calibrated=a.calibrated)
     if a.mode == 'start':
         if a.checkpoint or a.checkpoint_sha256:
             raise ValueError('start mode must not specify a restart checkpoint')
