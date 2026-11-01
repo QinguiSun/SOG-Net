@@ -24,8 +24,9 @@ is only for debug and marks the output accordingly. It uses a disk-backed
 record store, but metadata memory is O(frames), capped by
 `--max-frames-per-split`. All frames use one logical source system: sampling
 weights are frame-level, not parent-material-balanced. Map size and free disk
-space need an explicit check before full conversion. Never treat partial
-conversion status as complete.
+space need an explicit check before full conversion. Interrupted conversion
+cannot currently resume and must be restarted in a new directory. Never treat
+partial conversion status as complete.
 
 On SCNet, `examples/elementa/dpa4c_lmdb_probe.sbatch` inspects the installed
 environment. `examples/elementa/dpa4c_lmdb_smoke.sbatch` builds a 16-frame
