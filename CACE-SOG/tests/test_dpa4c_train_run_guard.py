@@ -93,3 +93,20 @@ def test_calibrated_initialization_is_bound_to_index_and_checkpoint(tmp_path, mo
     with pytest.raises(ValueError, match='source index identity'):
         guard.checked_files(prepared, db, release, pretrained, commit,
             initialization='pilot-calibrated', calibrated=calibrated)
+
+
+def test_restart_rejects_checkpoint_schedule_changes(tmp_path, monkeypatch):
+    db, release, pretrained, data, _ = fixture(tmp_path, monkeypatch)
+    prepared = tmp_path / 'prepared-scheduled'
+    prepare(db, release, data, prepared, 250, 1, 42, save_every=25, keep_checkpoints=7)
+    checked = guard.checked_files(prepared, db, release, pretrained, 'a' * 40)
+    run = tmp_path / 'run-scheduled'; run.mkdir(); guard.start(run, checked)
+    checkpoint = run / 'model.ckpt-25.pt'; checkpoint.write_bytes(b'weights')
+    guard.resume(run, checked, checkpoint, digest(checkpoint))
+    config_path = run / 'input_dpa4c_lmdb.json'
+    config = json.loads(config_path.read_text())
+    assert config['training']['save_freq'] == 25
+    config['training']['save_freq'] = 50
+    config_path.write_text(json.dumps(config))
+    with pytest.raises(ValueError, match='configuration'):
+        guard.resume(run, checked, checkpoint, digest(checkpoint))
