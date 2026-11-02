@@ -41,9 +41,11 @@ filesystem and checks decoded frames against the original index.
 
 `prepare_lmdb` generates a config only after a complete unsampled conversion
 passes source and hash checks. `dpa4c_train_lmdb.sbatch` provides guarded
-start/resume entry points and checks the released checkpoint, input hashes,
-and repository commit before calling DeePMD. This launcher has local tests
-but has not yet been verified on SCNet. The user must explicitly set the
+start entry point and checks the released checkpoint, input hashes,
+and repository commit before calling DeePMD. Resume is disabled: the SCNet
+restart probe showed that ordinary DeePMD LMDB restart replays data from the
+beginning rather than restoring the sampler position. This launcher has local
+tests but has not yet been verified on SCNet. The user must explicitly set the
 number of optimizer steps; a fixed number does not prove every frame is seen.
 
 ## Held-out evaluation after a production fine-tune exists
