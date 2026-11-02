@@ -16,13 +16,13 @@ apptainer exec --underlay --nv --cleanenv --no-home --bind /work:/work "$ROOT/ub
 set -euo pipefail
 ROOT=/work/home/einlovestan/datasets/ELEMENTA_CACE_SOG/dpa4c
 ENV_DIR="$ROOT/env-deepmd-3.2.0-cuda129-retry-5415731"
-CODE="$ROOT/replay-experiment-20261102/restricted-code"
+CODE="$ROOT/replay-experiment-20261102/restricted-code-v2"
 CFG="$ROOT/runs/dpa4c-epoch-fault-probe-5417774/input.json"
 DATA="$ROOT/runs/dpa4c-lmdb-recover-5416703/data"
 INITIAL="$ROOT/runs/dpa4c-bias-pilot-5416085/pretrained-pilot-bias.pt"
 RUN="$ROOT/runs/dpa4c-restricted-resume-$RESTRICTED_JOB"
 test -d "$CODE/dpa4c_sog"
-echo '64c0696636097e0d8f0817ba5f3df85d2610b2fd7ce7edc21d65714005641352  '"$CODE/dpa4c_sog/restricted_train_experimental.py" | sha256sum -c -
+echo '74b6c95591a1aa2292b55a7c5822d8c48af8f9b1b0002454e50cc7508f477177  '"$CODE/dpa4c_sog/restricted_train_experimental.py" | sha256sum -c -
 echo '70e3c63179d30c606b294ff23d6239b5b309818a064811d79fa04701825b4865  '"$CODE/dpa4c_sog/sampler_resume_experimental.py" | sha256sum -c -
 echo '40a93ab3e359498edf94ed595a3aadd254f58d980c5ccc4581345e869f69d858  '"$CODE/dpa4c_sog/sampler_recovery.py" | sha256sum -c -
 echo 'd6b95b6665dc9bf4b15f4f0c93ca4f6b2d9029b700a42ffcc65502f3cdda2355  '"$INITIAL" | sha256sum -c -
