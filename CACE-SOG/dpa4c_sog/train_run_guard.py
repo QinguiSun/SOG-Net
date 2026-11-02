@@ -1,6 +1,8 @@
 """Verify prepared full LMDB inputs and guard DPA4C training provenance.
 
 This guard is not a numerical, physical, memory or training-readiness test.
+Ordinary DeePMD LMDB restart is disabled: the SCNet restart probe observed
+the sampler replaying earlier training frames rather than resuming its cursor.
 """
 import argparse
 import json
@@ -113,7 +115,8 @@ def start(run, checked):
         json.dump(checked, f, indent=2, allow_nan=False); f.write('\n')
 
 
-def resume(run, checked, checkpoint, expected_sha256):
+def _validate_resume_provenance(run, checked, checkpoint, expected_sha256):
+    """Check provenance only; success does not make restart safe."""
     run = Path(run).resolve(strict=True)
     if (run / 'training_status.json').exists():
         raise ValueError('this run already has a completed training status')
@@ -132,6 +135,14 @@ def resume(run, checked, checkpoint, expected_sha256):
         raise ValueError('restart checkpoint SHA mismatch')
 
 
+def resume(run, checked, checkpoint, expected_sha256):
+    raise RuntimeError(
+        'LMDB restart is disabled: the SCNet restart probe observed sampler '
+        'replay of earlier frames. Checkpoint provenance alone cannot restore '
+        'the data cursor; a validated sampler-aware restart is required.'
+    )
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--mode', choices=('start', 'resume'), required=True)
@@ -142,6 +153,8 @@ def main():
     p.add_argument('--initialization', choices=('raw-finetune', 'pilot-calibrated'), required=True)
     p.add_argument('--calibrated')
     a = p.parse_args()
+    if a.mode == 'resume':
+        resume(a.run, None, a.checkpoint, a.checkpoint_sha256)
     checked = checked_files(a.prepared, a.database, a.release, a.pretrained, a.repo_commit,
                             initialization=a.initialization, calibrated=a.calibrated)
     if a.mode == 'start':
