@@ -10,8 +10,8 @@ source frame independently.
 All frames and force components enter the metrics and the 2D density plots.
 No input arrays are retained between frames. A temporary SQLite primary key
 detects duplicate frame identifiers without growing RAM with dataset size.
-If <input>.status.json exists it must be a completed prediction manifest with
-matching full-file SHA256 and frame counts. Standalone JSONL needs no sidecar.
+A completed full-test <input>.status.json is required, with matching full-file
+SHA256 and frame counts.
 """
 from __future__ import annotations
 
