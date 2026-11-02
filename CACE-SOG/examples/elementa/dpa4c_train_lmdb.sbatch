@@ -8,8 +8,8 @@
 #SBATCH --job-name=dpa4c-lmdb-train
 
 # Usage: sbatch this-file start PREPARED RUN EXPECTED_COMMIT
-# Or:    sbatch this-file resume PREPARED RUN EXPECTED_COMMIT CHECKPOINT CHECKPOINT_SHA256
-# Set DPA_INIT_MODE explicitly to raw-finetune or pilot-calibrated for both start and resume.
+# Resume is disabled until LMDB sampler position recovery is validated on SCNet.
+# Set DPA_INIT_MODE explicitly to raw-finetune or pilot-calibrated for start.
 # This script does not establish numerical validity or full-scale memory safety.
 set -euo pipefail
 MODE=${1:?expected start or resume}
