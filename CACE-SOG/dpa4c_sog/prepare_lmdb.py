@@ -66,9 +66,11 @@ def prepare(database, release_config, converted, output, steps, batch_size, seed
     for key in ('stat_file', 'stat_file_mode', 'numb_epoch', 'numb_epochs', 'num_epoch', 'num_epochs',
                 'numb_step', 'numb_steps', 'num_step', 'num_steps', 'stop_batch', 'zero_stage'):
         training.pop(key, None)
-    training.update({'training_data': {'systems': str(data / 'train.lmdb'), 'batch_size': batch_size},
+    training.update({'training_data': {'systems': str(data / 'train.lmdb'), 'batch_size': batch_size,
+                                        'auto_prob_style': 'prob_sys_size'},
                      'validation_data': {'systems': str(data / 'val.lmdb'), 'batch_size': batch_size, 'numb_batch': 1},
-                     'num_steps': steps, 'seed': seed, 'enable_compile': False, 'enable_ema': False})
+                     'num_steps': steps, 'seed': seed, 'enable_compile': False, 'enable_ema': False,
+                     'change_bias_after_training': False})
     # Always emit at least one checkpoint even for a short requested run.
     training['save_freq'] = min(save_every, steps)
     if keep_checkpoints is None:
