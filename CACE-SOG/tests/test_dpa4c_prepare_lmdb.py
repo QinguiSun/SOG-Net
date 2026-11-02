@@ -61,6 +61,26 @@ def test_checkpoint_schedule_is_configurable_and_recorded(tmp_path):
     assert report2['save_every'] == 8
 
 
+def test_distinct_train_validation_batch_sizes_are_bound_to_report(tmp_path):
+    import hashlib
+    db, release, _, data = setup_data(tmp_path)
+    out = tmp_path / 'batch8'
+    report = prepare(db, release, data, out, 100, 8, 42,
+                     save_every=10, keep_checkpoints=20, validation_batch_size=1)
+    config_bytes = (out / 'input_dpa4c_lmdb.json').read_bytes()
+    config = json.loads(config_bytes)
+    assert config['training']['training_data']['batch_size'] == 8
+    assert config['training']['validation_data']['batch_size'] == 1
+    assert report['config_sha256'] == hashlib.sha256(config_bytes).hexdigest()
+
+
+@pytest.mark.parametrize('invalid', [0, -1, True])
+def test_invalid_validation_batch_size_rejected(tmp_path, invalid):
+    with pytest.raises(ValueError):
+        prepare(tmp_path / 'missing', tmp_path / 'missing', tmp_path / 'missing',
+                tmp_path / 'out', 10, 8, 42, validation_batch_size=invalid)
+
+
 @pytest.mark.parametrize('kwargs', [
     {'save_every': 0}, {'save_every': True}, {'keep_checkpoints': 0},
     {'keep_checkpoints': True},
