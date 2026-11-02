@@ -17,7 +17,7 @@ EXPECTED_COMMIT=${4:?full repository commit required}
 case "$MODE" in start|resume) ;; *) echo 'invalid mode'; exit 2;; esac
 case "$PREPARED" in /work/*) ;; *) echo 'prepared must be under /work'; exit 2;; esac
 case "$RUN" in /work/*) ;; *) echo 'run must be under /work'; exit 2;; esac
-REPO=/work/home/einlovestan/projects/SOG-Net-dpa4c-full-964cb
+REPO=/work/home/einlovestan/projects/SOG-Net-dpa4c-b8-9a575
 ROOT=/work/home/einlovestan/datasets/ELEMENTA_CACE_SOG/dpa4c
 CODE="$ROOT/replay-experiment-20261102/restricted-code-b8"
 ACTUAL_COMMIT=$(cd "$REPO" && git rev-parse HEAD)
@@ -34,7 +34,7 @@ apptainer exec --underlay --nv --cleanenv --no-home --bind /work:/work "$ROOT/ub
 set -euo pipefail
 ROOT=/work/home/einlovestan/datasets/ELEMENTA_CACE_SOG/dpa4c
 ENV_DIR="$ROOT/env-deepmd-3.2.0-cuda129-retry-5415731"
-REPO=/work/home/einlovestan/projects/SOG-Net-dpa4c-full-964cb/CACE-SOG
+REPO=/work/home/einlovestan/projects/SOG-Net-dpa4c-b8-9a575/CACE-SOG
 CODE="$ROOT/replay-experiment-20261102/restricted-code-b8"
 INDEX=/work/home/einlovestan/datasets/ELEMENTA_CACE_SOG/indices/elementa.sqlite3
 RELEASE="$ROOT/DPA4C-Neo-OMol25-100M-v20260820.json"
