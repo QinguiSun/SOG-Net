@@ -48,6 +48,16 @@ beginning rather than restoring the sampler position. This launcher has local
 tests but has not yet been verified on SCNet. The user must explicitly set the
 number of optimizer steps; a fixed number does not prove every frame is seen.
 
+`sampler_resume_experimental` and `sampler_recovery` are isolated research
+helpers, not an enabled training restart path. On SCNet, a single-rank
+batch-size-one six-step comparison and a 16-frame epoch-boundary test with
+process termination around sidecar publication reproduced expected train and
+validation frame IDs; optimizer state tensors matched on restoration. Those
+tests do not establish node-crash durability, interrupted checkpoint-write
+recovery, learning-rate or RNG restoration, or production readiness. Ordinary
+resume remains disabled until the complete launcher and recovery protocol are
+validated. Do not infer full-dataset coverage from these small probes.
+
 ## Held-out evaluation after a production fine-tune exists
 
 Use `dpa4c_sog.validate --kind dpa` or `dpa4c_sog.validate_shards` to select
