@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from dpa4c_sog.restricted_train_experimental import fingerprint, validate_config, verify_resume_lr
+from dpa4c_sog.restricted_train_experimental import fingerprint, validate_config, verify_resume_lr, validate_run_symlinks
 
 
 def config(tmp_path):
@@ -45,3 +45,47 @@ def test_lr_check_rejects_drift_and_nonfinite():
     for bad in (0.1, math.nan, math.inf):
         with pytest.raises(ValueError): verify_resume_lr([{'lr': 1e-4}], [{'lr': bad}])
     with pytest.raises(ValueError): verify_resume_lr([{'lr': 1e-4}], [])
+
+
+def test_symlinks_allow_stale_local_published_checkpoint_pair(tmp_path):
+    for step in (15, 16):
+        (tmp_path / f'model.ckpt-{step}.pt').write_bytes(b'checkpoint')
+        (tmp_path / f'model.ckpt-{step}.pt.sampler.json').write_text('{}')
+    (tmp_path / 'model.ckpt.pt').symlink_to('model.ckpt-15.pt')
+    (tmp_path / 'model.ckpt.pt.sampler.json').symlink_to('model.ckpt-15.pt.sampler.json')
+    validate_run_symlinks(tmp_path)
+
+
+@pytest.mark.parametrize('name,target', [
+    ('other', 'model.ckpt-15.pt'),
+    ('model.ckpt.pt', '../model.ckpt-15.pt'),
+    ('model.ckpt.pt', '/tmp/model.ckpt-15.pt'),
+    ('model.ckpt.pt', 'model.ckpt-15.pt.sampler.json'),
+    ('model.ckpt.pt.sampler.json', 'model.ckpt-15.pt'),
+    ('model.ckpt.pt', 'model.ckpt-0.pt'),
+    ('model.ckpt.pt', 'model.ckpt-999.pt'),
+])
+def test_symlinks_reject_unexpected_traversing_wrong_type_or_missing(tmp_path, name, target):
+    (tmp_path / 'model.ckpt-15.pt').write_bytes(b'checkpoint')
+    (tmp_path / 'model.ckpt-15.pt.sampler.json').write_text('{}')
+    (tmp_path / name).symlink_to(target)
+    with pytest.raises(ValueError): validate_run_symlinks(tmp_path)
+
+
+def test_symlinks_reject_indirect_and_directory_targets(tmp_path):
+    target = tmp_path / 'model.ckpt-15.pt'
+    target.symlink_to('real.pt')
+    (tmp_path / 'real.pt').write_bytes(b'data')
+    (tmp_path / 'model.ckpt.pt').symlink_to(target.name)
+    with pytest.raises(ValueError): validate_run_symlinks(tmp_path)
+    target.unlink()
+    target.mkdir()
+    with pytest.raises(ValueError): validate_run_symlinks(tmp_path)
+
+
+def test_symlinks_reject_inconsistent_published_steps(tmp_path):
+    (tmp_path / 'model.ckpt-15.pt').write_bytes(b'checkpoint')
+    (tmp_path / 'model.ckpt-16.pt.sampler.json').write_text('{}')
+    (tmp_path / 'model.ckpt.pt').symlink_to('model.ckpt-15.pt')
+    (tmp_path / 'model.ckpt.pt.sampler.json').symlink_to('model.ckpt-16.pt.sampler.json')
+    with pytest.raises(ValueError, match='steps disagree'): validate_run_symlinks(tmp_path)
