@@ -1,6 +1,7 @@
 import hashlib
 import json
 import subprocess
+import sys
 from pathlib import Path
 import pytest
 from test_dpa4c_convert import make_dataset
@@ -35,15 +36,17 @@ def test_start_restart_and_tamper_guards(tmp_path, monkeypatch):
     first = run / 'model.ckpt-5.pt'; first.write_bytes(b'first')
     second = run / 'model.ckpt-10.pt'; second.write_bytes(b'latest')
     with pytest.raises(ValueError, match='latest'):
-        guard.resume(run, checked, first, digest(first))
+        guard._validate_resume_provenance(run, checked, first, digest(first))
     with pytest.raises(ValueError, match='SHA'):
-        guard.resume(run, checked, second, '0'*64)
-    guard.resume(run, checked, second, digest(second))
+        guard._validate_resume_provenance(run, checked, second, '0'*64)
+    guard._validate_resume_provenance(run, checked, second, digest(second))
+    with pytest.raises(RuntimeError, match='sampler replay'):
+        guard.resume(run, checked, second, digest(second))
     with pytest.raises(ValueError, match='provenance'):
-        guard.resume(run, dict(checked, repository_commit='b'*40), second, digest(second))
+        guard._validate_resume_provenance(run, dict(checked, repository_commit='b'*40), second, digest(second))
     with (run / 'input_dpa4c_lmdb.json').open('a') as f: f.write(' ')
     with pytest.raises(ValueError, match='configuration'):
-        guard.resume(run, checked, second, digest(second))
+        guard._validate_resume_provenance(run, checked, second, digest(second))
     with (data / 'train.jsonl').open('a') as f: f.write('tamper')
     with pytest.raises(ValueError, match='hash mismatch'):
         guard.checked_files(prepared, db, release, pretrained, commit)
@@ -82,8 +85,8 @@ def test_calibrated_initialization_is_bound_to_index_and_checkpoint(tmp_path, mo
     run = tmp_path / 'run'; run.mkdir(); guard.start(run, checked)
     checkpoint = run / 'model.ckpt-10.pt'; checkpoint.write_bytes(b'weights')
     with pytest.raises(ValueError, match='provenance'):
-        guard.resume(run, raw, checkpoint, digest(checkpoint))
-    guard.resume(run, checked, checkpoint, digest(checkpoint))
+        guard._validate_resume_provenance(run, raw, checkpoint, digest(checkpoint))
+    guard._validate_resume_provenance(run, checked, checkpoint, digest(checkpoint))
     calibrated.write_bytes(b'corrupted')
     with pytest.raises(ValueError, match='calibrated checkpoint SHA'):
         guard.checked_files(prepared, db, release, pretrained, commit,
@@ -102,11 +105,24 @@ def test_restart_rejects_checkpoint_schedule_changes(tmp_path, monkeypatch):
     checked = guard.checked_files(prepared, db, release, pretrained, 'a' * 40)
     run = tmp_path / 'run-scheduled'; run.mkdir(); guard.start(run, checked)
     checkpoint = run / 'model.ckpt-25.pt'; checkpoint.write_bytes(b'weights')
-    guard.resume(run, checked, checkpoint, digest(checkpoint))
+    guard._validate_resume_provenance(run, checked, checkpoint, digest(checkpoint))
     config_path = run / 'input_dpa4c_lmdb.json'
     config = json.loads(config_path.read_text())
     assert config['training']['save_freq'] == 25
     config['training']['save_freq'] = 50
     config_path.write_text(json.dumps(config))
     with pytest.raises(ValueError, match='configuration'):
-        guard.resume(run, checked, checkpoint, digest(checkpoint))
+        guard._validate_resume_provenance(run, checked, checkpoint, digest(checkpoint))
+
+
+def test_resume_cli_rejects_before_accessing_inputs(tmp_path):
+    command = [
+        sys.executable, '-m', 'dpa4c_sog.train_run_guard', '--mode', 'resume',
+        '--prepared', str(tmp_path / 'missing'), '--database', str(tmp_path / 'missing'),
+        '--release', str(tmp_path / 'missing'), '--pretrained', str(tmp_path / 'missing'),
+        '--repo-commit', 'a' * 40, '--run', str(tmp_path / 'missing'),
+        '--initialization', 'raw-finetune',
+    ]
+    result = subprocess.run(command, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert 'sampler replay' in result.stderr
