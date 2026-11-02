@@ -9,7 +9,7 @@
 # Experimental 20-step debug-only test; does not read test or train full data.
 set -euo pipefail
 ROOT=/work/home/einlovestan/datasets/ELEMENTA_CACE_SOG/dpa4c
-CODE="$ROOT/replay-experiment-20261102/restricted-code"
+CODE="$ROOT/replay-experiment-20261102/restricted-code-v2"
 module load apps/apptainer/1.3.4
 export APPTAINERENV_CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:?GPU missing}"
 export APPTAINERENV_RESTRICTED_JOB="${SLURM_JOB_ID:?Job ID missing}"
@@ -17,7 +17,7 @@ apptainer exec --underlay --nv --cleanenv --no-home --bind /work:/work "$ROOT/ub
 set -euo pipefail
 ROOT=/work/home/einlovestan/datasets/ELEMENTA_CACE_SOG/dpa4c
 ENV_DIR="$ROOT/env-deepmd-3.2.0-cuda129-retry-5415731"
-CODE="$ROOT/replay-experiment-20261102/restricted-code"
+CODE="$ROOT/replay-experiment-20261102/restricted-code-v2"
 CFG="$ROOT/runs/dpa4c-epoch-fault-probe-5417774/input.json"
 DATA="$ROOT/runs/dpa4c-lmdb-recover-5416703/data"
 INITIAL="$ROOT/runs/dpa4c-bias-pilot-5416085/pretrained-pilot-bias.pt"
