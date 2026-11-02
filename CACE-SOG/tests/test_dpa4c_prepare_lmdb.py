@@ -24,9 +24,11 @@ def test_production_config_keeps_model_and_train_val_only(tmp_path):
     config = json.loads((out / 'input_dpa4c_lmdb.json').read_text())
     assert config['model'] == original['model']
     assert config['training']['training_data']['systems'] == str(data / 'train.lmdb')
+    assert config['training']['training_data']['auto_prob_style'] == 'prob_sys_size'
     assert config['training']['validation_data']['systems'] == str(data / 'val.lmdb')
     assert config['training']['num_steps'] == 12
     assert config['training']['enable_compile'] is False
+    assert config['training']['change_bias_after_training'] is False
     assert 'stat_file' not in config['training']
     assert 'test.lmdb' not in json.dumps(config)
     assert report['source_counts'] == {'train': 3, 'val': 2}
