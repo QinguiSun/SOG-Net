@@ -15,9 +15,12 @@ from .prepare import sha256
 
 
 def prepare(database, release_config, converted, output, steps, batch_size, seed,
-            save_every=2000, keep_checkpoints=None):
+            save_every=2000, keep_checkpoints=None, validation_batch_size=None):
+    if validation_batch_size is None:
+        validation_batch_size = batch_size
     for name, value, minimum in (('steps', steps, 1), ('batch_size', batch_size, 1),
-                                 ('seed', seed, 0), ('save_every', save_every, 1)):
+                                 ('seed', seed, 0), ('save_every', save_every, 1),
+                                 ('validation_batch_size', validation_batch_size, 1)):
         if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
             raise ValueError(f'{name} must be an integer >= {minimum}')
     if keep_checkpoints is not None and (isinstance(keep_checkpoints, bool) or
@@ -68,7 +71,7 @@ def prepare(database, release_config, converted, output, steps, batch_size, seed
         training.pop(key, None)
     training.update({'training_data': {'systems': str(data / 'train.lmdb'), 'batch_size': batch_size,
                                         'auto_prob_style': 'prob_sys_size'},
-                     'validation_data': {'systems': str(data / 'val.lmdb'), 'batch_size': batch_size, 'numb_batch': 1},
+                     'validation_data': {'systems': str(data / 'val.lmdb'), 'batch_size': validation_batch_size, 'numb_batch': 1},
                      'num_steps': steps, 'seed': seed, 'enable_compile': False, 'enable_ema': False,
                      'change_bias_after_training': False})
     # Always emit at least one checkpoint even for a short requested run.
@@ -110,9 +113,12 @@ def main():
                         help='checkpoint interval in steps, capped at total steps (default 2000)')
     parser.add_argument('--keep-checkpoints', type=int,
                         help='maximum retained checkpoints; default keeps release setting or 3')
+    parser.add_argument('--validation-batch-size', type=int,
+                        help='validation frames per batch; defaults to training batch size')
     a = parser.parse_args()
     print(json.dumps(prepare(a.database, a.release_config, a.converted, a.output,
-                             a.steps, a.batch_size, a.seed, a.save_every, a.keep_checkpoints), indent=2))
+                             a.steps, a.batch_size, a.seed, a.save_every, a.keep_checkpoints,
+                             a.validation_batch_size), indent=2))
 
 
 if __name__ == '__main__':
