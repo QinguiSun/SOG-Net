@@ -17,12 +17,45 @@ from pathlib import Path
 import re
 import runpy
 import shutil
+import stat
 import sys
 
 from .sampler_recovery import DurableSamplerResume, inspect_pairs, _fsync_dir
 from .sampler_resume_experimental import _sha, install
 
 _HASH = re.compile(r'[a-f0-9]{64}')
+
+
+def validate_run_symlinks(run):
+    """Allow only DeepMD's direct, local checkpoint publication links.
+
+    A crash after saving a new pair but before publication may leave both
+    links pointing at the preceding pair. Selection uses numbered pair hashes,
+    not these links; the pointers need not identify the latest checkpoint.
+    """
+    patterns = {
+        'model.ckpt.pt': re.compile(r'model\.ckpt-([1-9][0-9]*)\.pt'),
+        'model.ckpt.pt.sampler.json': re.compile(r'model\.ckpt-([1-9][0-9]*)\.pt\.sampler\.json'),
+    }
+    steps = {}
+    for item in Path(run).iterdir():
+        if not item.is_symlink():
+            continue
+        pattern = patterns.get(item.name)
+        target = os.readlink(item)
+        match = pattern.fullmatch(target) if pattern is not None else None
+        if match is None:
+            raise ValueError('unexpected or unsafe symlink in run directory: ' + item.name)
+        target_path = item.parent / target
+        try:
+            target_mode = os.lstat(target_path).st_mode
+        except OSError as exc:
+            raise ValueError('missing symlink target: ' + item.name) from exc
+        if not stat.S_ISREG(target_mode):
+            raise ValueError('symlink target must be a direct regular file: ' + item.name)
+        steps[item.name] = int(match.group(1))
+    if len(steps) == 2 and len(set(steps.values())) != 1:
+        raise ValueError('checkpoint publication symlink steps disagree')
 
 
 def fingerprint(info):
@@ -156,10 +189,7 @@ def main():
     fd = os.open(run / '.restricted.lock', os.O_CREAT | os.O_RDWR | getattr(os, 'O_NOFOLLOW', 0), 0o600)
     with os.fdopen(fd, 'a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        for item in run.iterdir():
-            if item.is_symlink():
-                if item.name != 'model.ckpt.pt' or item.resolve().parent != run:
-                    raise ValueError('unexpected symlink in run directory')
+        validate_run_symlinks(run)
         if (run/'restricted_complete.json').exists():
             raise ValueError('run is already marked complete')
         snapshot = run / 'restricted_input.json'
