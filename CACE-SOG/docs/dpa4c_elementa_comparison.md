@@ -58,6 +58,13 @@ recovery, learning-rate or RNG restoration, or production readiness. Ordinary
 resume remains disabled until the complete launcher and recovery protocol are
 validated. Do not infer full-dataset coverage from these small probes.
 
+`restricted_train_experimental` is a separate single-rank research entry
+point, not the existing production launcher. It does not save RNG state or
+guarantee bitwise-identical continuation. If a final checkpoint and sampler
+sidecar are written but the completion marker is absent after interruption,
+it refuses to resume; manually inspect the run rather than restarting or
+claiming success. A separate safe finalization procedure is not implemented.
+
 ## Held-out evaluation after a production fine-tune exists
 
 Use `dpa4c_sog.validate --kind dpa` or `dpa4c_sog.validate_shards` to select
