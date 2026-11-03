@@ -80,10 +80,20 @@ if (resume.get('status') != 'passed' or resume.get('debug_only') is not True
 print('FULL_INDEX_CONFIG_AND_HASH_CHECK_OK; val minibatch diagnostic only; RNG not restored',flush=True)
 PY
 export PYTHONPATH="$CODE"
+cd "$FULL_RUN"
+python - "$CODE" <<'PY'
+import sys
+from pathlib import Path
+import dpa4c_sog
+expected = (Path(sys.argv[1]) / 'dpa4c_sog' / '__init__.py').resolve(strict=True)
+actual = Path(dpa4c_sog.__file__).resolve(strict=True)
+if actual != expected:
+    raise RuntimeError(f'unexpected dpa4c_sog package: {actual}; expected {expected}')
+print('B16_STAGED_PACKAGE_OK', actual, flush=True)
+PY
 echo 'dfa3c7a621e98916913e4bf8bdbfb3b09522a6daef77a097797b3aecfc47322c  '"$CODE/dpa4c_sog/warmstart_provenance.py" | sha256sum -c -
 python -u -m dpa4c_sog.warmstart_provenance --run "$ROOT/runs/dpa4c-full-b8-v1" --prepared "$ROOT/prepared-full-b8-v1" --conversion "$DATA" --checkpoint-sha256 70ac1cf73ad28a383e633cc9b4b48478e1eb3408221bb4a9225fceecad7f81ea --fingerprint e5b00d12b1157a1766acfa9c41a8c1c5478db065d1f7995d1d2cc380c5c0e1d4
 WARM="$ROOT/runs/dpa4c-full-b8-v1/model.ckpt-245000.pt"
-cd "$FULL_RUN"
 python -u -m dpa4c_sog.restricted_train_batch16_experimental --mode "$FULL_MODE" --config "$FULL_PREPARED/input_dpa4c_lmdb.json" --run "$FULL_RUN" --train "$DATA/train.lmdb" --val "$DATA/val.lmdb" --initial "$WARM" --initial-sha256 70ac1cf73ad28a383e633cc9b4b48478e1eb3408221bb4a9225fceecad7f81ea
 echo FULL_TRAIN_COMMAND_FINISHED
 CONTAINER
